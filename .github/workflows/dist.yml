@@ -1,0 +1,139 @@
+# GitHub Actions CI for LUPO TTS
+# Builds macOS .dmg (universal), Windows installer (.exe via NSIS), and Linux AppImage
+# Triggered on tag push (v*.*.*) or manually with a version input
+
+name: Build release artifacts
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        required: true
+
+# Quickly cancel previous run if triggered again
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  publish-tauri:
+    permissions:
+      contents: write
+
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # for Arm based macs (M1 and above).
+          - name: macOS (Arm)
+            platform: macos-latest
+            target: aarch64-apple-darwin
+            bundle: dmg
+          # for Intel based macs.
+          - name: macOS (Intel)
+            platform: macos-latest
+            target: x86_64-apple-darwin
+            bundle: dmg
+          # Windows x86_64
+          - name: Windows (x64)
+            platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            bundle: nsis
+          # Windows aarch64
+          - name: Windows (Arm)
+            platform: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            bundle: nsis
+          # Linux x86_64
+          - name: Linux (x86_64)
+            platform: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            bundle: deb,rpm
+          # Linux aarch64
+          - name: Linux (aarch64)
+            platform: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            bundle: deb,rpm
+
+    env:
+      VERSION: ${{ github.event.inputs.version || github.ref_name }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Cargo registry & git
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-
+
+      - name: Cache Cargo build
+        uses: actions/cache@v3
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-build-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-build-${{ matrix.target }}-
+
+      - name: Cache Cargo install
+        uses: actions/cache@v3
+        with:
+          path: ~/.cargo/bin
+          key: ${{ runner.os }}-cargo-bin-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-bin-${{ matrix.target }}-
+
+      - name: Install system dependencies (Ubuntu only)
+        if: ${{ startsWith(matrix.platform, 'ubuntu') }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf pkg-config libglib2.0-dev libasound2-dev xdg-utils
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          # install wasm target for Yew/Trunk builds plus any needed native targets on macOS
+          targets: wasm32-unknown-unknown,${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Install build tools (Unix)
+        shell: bash
+        if: ${{ !startsWith(matrix.platform, 'windows') }}
+        run: |
+          if ! command -v trunk > /dev/null; then
+            cargo install --locked trunk
+          fi
+          if ! command -v wasm-bindgen > /dev/null; then
+            cargo install --locked wasm-bindgen-cli
+          fi
+
+      - name: Install build tools (Windows)
+        if: ${{ startsWith(matrix.platform, 'windows') }}
+        shell: pwsh
+        run: |
+          if (-not (Get-Command trunk -ErrorAction SilentlyContinue)) {
+            cargo install --locked trunk
+          }
+          if (-not (Get-Command wasm-bindgen -ErrorAction SilentlyContinue)) {
+            cargo install --locked wasm-bindgen-cli
+          }
+
+      - name: Build bundle
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v__VERSION__ # the action replaces __VERSION__ with the app version
+          releaseName: 'Release v__VERSION__'
+          releaseBody: 'See the assets to download this version and install.'
+          releaseDraft: true
+          prerelease: true
+          args: --target ${{ matrix.target }} --bundles ${{ matrix.bundle }}

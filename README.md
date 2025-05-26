@@ -11,7 +11,7 @@ In bocca al lupo.
 ## Features
 
 - [ ] Connect to Twitch
-- [ ] User OpenAI "create speech" as TTS
+- [ ] Use OpenAI "create speech" as TTS
 - [ ] Queue messages from Twitch chat
 - [ ] Settings fro TTS options
 - [ ] Filtering system
