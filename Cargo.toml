@@ -3,6 +3,7 @@ resolver = "3"
 members = ["cli", "bones", "fur"]
 
 [workspace.package]
-version = "0.1.0"
+# use 0.0.1 to mark as extremely experimental
+version = "0.0.1"
 license = "Apache-2.0"
 edition = "2024"
