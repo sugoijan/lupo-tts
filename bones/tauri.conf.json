@@ -1,0 +1,43 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Lupo-TTS",
+  "version": "0.1.0",
+  "identifier": "dev.sugoijan.lupo-tts",
+  "build": {
+    "beforeDevCommand": "cd fur && trunk serve",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "cd fur && trunk build",
+    "frontendDist": "../fur/dist"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "Lupo TTS",
+        "width": 800,
+        "height": 600
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "../tail/Icon-Lupo-TTS.iconset/icon_128x128.png",
+      "../tail/Icon-Lupo-TTS.iconset/icon_128x128@2x.png",
+      "../tail/Icon-Lupo-TTS.iconset/icon_16x16.png",
+      "../tail/Icon-Lupo-TTS.iconset/icon_16x16@2x.png",
+      "../tail/Icon-Lupo-TTS.iconset/icon_256x256.png",
+      "../tail/Icon-Lupo-TTS.iconset/icon_256x256@2x.png",
+      "../tail/Icon-Lupo-TTS.iconset/icon_32x32.png",
+      "../tail/Icon-Lupo-TTS.iconset/icon_32x32@2x.png",
+      "../tail/Icon-Lupo-TTS.iconset/icon_512x512.png",
+      "../tail/Icon-Lupo-TTS.iconset/icon_512x512@2x.png",
+      "../tail/Icon-Lupo-TTS.icns",
+      "../tail/Icon-Lupo-TTS.ico"
+    ]
+  }
+}
