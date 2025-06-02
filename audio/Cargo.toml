@@ -1,0 +1,12 @@
+[package]
+name = "lupo-audio"
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+
+[dependencies]
+tracing = "0.1"
+rodio = { version = "0.20", default-features = false, features = ["tracing", "symphonia-all"] }
+bytes = "1.0"
+thiserror = "2"
+tokio = { version = "1", features = ["full", "tracing"] }

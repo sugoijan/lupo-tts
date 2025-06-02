@@ -1,0 +1,9 @@
+[package]
+name = "lupo-models"
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+sea-orm = { version = "1", default-features = false, features = ["macros"] }

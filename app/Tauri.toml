@@ -1,0 +1,37 @@
+productName = "Lupo-TTS"
+identifier = "dev.sugoijan.lupo-tts"
+
+[build]
+dev-url = "http://localhost:1420"
+before-dev-command = "cd ui && trunk serve"
+before-build-command = "cd ui && trunk build"
+frontend-dist = "../ui/dist"
+remove-unused-commands = true
+
+[app]
+with-global-tauri = true
+
+[[app.windows]]
+title = "Lupo TTS"
+width = 986
+height = 609
+
+[plugins.deep-link]
+desktop = { schemes = ["lupo-tts"] }
+
+[bundle]
+active = true
+icon = [
+    "../art/Icon-Lupo-TTS.iconset/icon_128x128.png",
+    "../art/Icon-Lupo-TTS.iconset/icon_128x128@2x.png",
+    "../art/Icon-Lupo-TTS.iconset/icon_16x16.png",
+    "../art/Icon-Lupo-TTS.iconset/icon_16x16@2x.png",
+    "../art/Icon-Lupo-TTS.iconset/icon_256x256.png",
+    "../art/Icon-Lupo-TTS.iconset/icon_256x256@2x.png",
+    "../art/Icon-Lupo-TTS.iconset/icon_32x32.png",
+    "../art/Icon-Lupo-TTS.iconset/icon_32x32@2x.png",
+    "../art/Icon-Lupo-TTS.iconset/icon_512x512.png",
+    "../art/Icon-Lupo-TTS.iconset/icon_512x512@2x.png",
+    "../art/Icon-Lupo-TTS.icns",
+    "../art/Icon-Lupo-TTS.ico"
+]

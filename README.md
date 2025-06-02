@@ -1,4 +1,4 @@
-<img src="tail/Icon-Lupo-TTS.svg" alt="logo" width="64" />
+<img src="art/Icon-Lupo-TTS.svg" alt="logo" width="64" />
 
 # LUPO TTS
 

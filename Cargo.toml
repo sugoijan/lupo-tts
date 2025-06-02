@@ -1,9 +1,21 @@
 [workspace]
 resolver = "3"
-members = ["cli", "bones", "fur"]
+members = ["app", "ui", "models", "migrator", "tts-openai", "audio", "secrets", "tts"]
 
 [workspace.package]
 # use 0.0.1 to mark as extremely experimental
 version = "0.0.1"
 license = "Apache-2.0"
 edition = "2024"
+
+[profile.dev]
+incremental = true # Compile your binary in smaller steps.
+
+[profile.release]
+codegen-units = 1 # Allows LLVM to perform better optimization.
+lto = true # Enables link-time-optimizations.
+opt-level = "s" # Prioritizes small binary size. Use `3` if you prefer speed.
+panic = "abort" # Higher performance by disabling panic handlers.
+strip = true # Ensures debug symbols are removed.
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
