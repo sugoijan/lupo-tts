@@ -5,5 +5,5 @@ license.workspace = true
 edition.workspace = true
 
 [dependencies]
-serde = { version = "1", features = ["derive"] }
-sea-orm = { version = "1", default-features = false, features = ["macros"] }
+serde.workspace = true
+sea-orm.workspace = true

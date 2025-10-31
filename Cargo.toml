@@ -1,12 +1,81 @@
 [workspace]
 resolver = "3"
-members = ["app", "ui", "models", "migrator", "tts-openai", "audio", "secrets", "tts"]
+members = [
+    "app-cli",
+    "app-gpui",
+    "app-slint",
+    "audio",
+    "migrator",
+    "models",
+    "secrets",
+    "tts",
+    "tts-openai",
+    "xtask",
+]
+exclude = ["vendor"]
 
 [workspace.package]
 # use 0.0.1 to mark as extremely experimental
 version = "0.0.1"
 license = "Apache-2.0"
 edition = "2024"
+rust-version = "1.90"
+
+[workspace.dependencies]
+# local crates
+lupo-audio.path = "audio"
+lupo-migrator.path = "migrator"
+lupo-models.path = "models"
+lupo-tts.path = "tts"
+lupo-tts-openai.path = "tts-openai"
+
+# gpui
+gpui = "*"
+gpui-component = "*"
+
+# Slint
+#slint = { version = "1.11", default-features = false, features = ["renderer-skia", "backend-winit", "compat-1-2", "serde"] }
+slint = { version = "1.14", default-features = false, features = ["accessibility", "unstable-wgpu-27", "unstable-winit-030", "std", "compat-1-2", "serde"] }
+
+# General
+url = { version = "2", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+directories = { version = "6", path = "vendor/directories-rs" }
+anyhow = "1"
+iddqd = "0.3"
+fern = { version = "0.7", features = ["chrono", "colored"] }
+smallvec = "1"
+thiserror = "2"
+#console-subscriber = "0.5"
+#keyring = "4.0.0-rc.1"
+bytes = "1.0"
+clap = { version = "4", features = ["derive"] }
+which = "8"
+
+# async
+tokio = { version = "1", features = ["full", "tracing"] }
+
+# logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter", "json"] }
+tracing-appender = "0.2"
+tracing-log = "0.2"
+tracing-error = "0.2"
+
+# http
+reqwest = { version = "0.12", default-features = false, features = ["native-tls", "json", "stream"] }
+
+# audio
+rodio = { version = "0.21", default-features = false, features = ["tracing", "playback", "symphonia-all"] }
+
+# database
+sea-orm = { version = "1", features = ["sqlx-sqlite", "runtime-tokio-native-tls", "debug-print"] }
+sea-orm-migration = { version = "1", features = ["sqlx-sqlite", "runtime-tokio-native-tls"] }
+
+# wasm
+wasm-bindgen = { version = "0.2" }
+console_error_panic_hook = "0.1.5"
 
 [profile.dev]
 incremental = true # Compile your binary in smaller steps.
@@ -14,7 +83,7 @@ incremental = true # Compile your binary in smaller steps.
 [profile.release]
 codegen-units = 1 # Allows LLVM to perform better optimization.
 lto = true # Enables link-time-optimizations.
-opt-level = "s" # Prioritizes small binary size. Use `3` if you prefer speed.
+opt-level = 3 # Prioritizes speed.
 panic = "abort" # Higher performance by disabling panic handlers.
 strip = true # Ensures debug symbols are removed.
 

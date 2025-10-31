@@ -65,6 +65,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Cache Cargo registry & git
         uses: actions/cache@v3

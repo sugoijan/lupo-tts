@@ -2,7 +2,7 @@
 
 use bytes::Bytes;
 use rodio::decoder::DecoderError;
-use rodio::{Decoder, OutputStream, PlayError, Sink, StreamError};
+use rodio::{Decoder, OutputStreamBuilder, Sink, StreamError};
 use std::io::BufReader;
 use std::sync::mpsc::{self, Sender};
 use std::thread;
@@ -14,9 +14,6 @@ use tracing::*;
 pub enum Error {
     #[error("failed to open audio output stream: {0}")]
     Stream(#[from] StreamError),
-
-    #[error("failed to play audio: {0}")]
-    Play(#[from] PlayError),
 
     #[error("failed to decode audio: {0}")]
     Decode(#[from] DecoderError),
@@ -34,6 +31,9 @@ enum AudioCommand {
         resp: oneshot::Sender<Result<(), Error>>,
     },
     Stop {
+        resp: oneshot::Sender<Result<(), Error>>,
+    },
+    Drain {
         resp: oneshot::Sender<Result<(), Error>>,
     },
 }
@@ -57,22 +57,15 @@ impl Audio {
         // Now spawn the audio thread.
         thread::spawn(move || -> () {
             // 1) Try to open the default audio device on THIS thread:
-            let (stream, stream_handle) = match OutputStream::try_default() {
-                Ok((stream, stream_handle)) => (stream, stream_handle),
+            let stream = match OutputStreamBuilder::open_default_stream() {
+                Ok(stream) => stream,
                 Err(e) => {
                     let _ = tx_init.send(Err(e.into()));
                     return;
                 }
             };
-            // a) Build the Sink. If that fails, send Err back and exit.
-            let sink = match Sink::try_new(&stream_handle) {
-                Ok(sink) => sink,
-                Err(e) => {
-                    // Sink::try_new failed. Report and exit.
-                    let _ = tx_init.send(Err(e.into()));
-                    return;
-                }
-            };
+            // a) Build the Sink attached to the stream's mixer.
+            let sink = Sink::connect_new(stream.mixer());
 
             // Tell the caller: “both stream + sink opened fine”
             let _ = tx_init.send(Ok(()));
@@ -85,7 +78,7 @@ impl Audio {
                         let result: Result<(), Error> = (|| {
                             let cursor = std::io::Cursor::new(audio_data);
                             let reader = BufReader::new(cursor);
-                            let source = Decoder::new_wav(reader)?;
+                            let source = Decoder::try_from(reader)?;
                             sink.append(source);
                             Ok(())
                         })();
@@ -96,6 +89,10 @@ impl Audio {
                     AudioCommand::Stop { resp } => {
                         // Stopping never panics: stop() returns ()
                         sink.stop();
+                        let _ = resp.send(Ok(()));
+                    }
+                    AudioCommand::Drain { resp } => {
+                        sink.sleep_until_end();
                         let _ = resp.send(Ok(()));
                     }
                 }
@@ -135,6 +132,17 @@ impl Audio {
     pub async fn stop(&self) -> Result<(), Error> {
         let (tx_reply, rx_reply) = oneshot::channel::<Result<(), Error>>();
         let cmd = AudioCommand::Stop { resp: tx_reply };
+        self.sender.send(cmd).map_err(|_| Error::ChannelClosed)?;
+        match rx_reply.await {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(err)) => Err(err),
+            Err(_) => Err(Error::ResponseDropped),
+        }
+    }
+
+    pub async fn drain(&self) -> Result<(), Error> {
+        let (tx_reply, rx_reply) = oneshot::channel::<Result<(), Error>>();
+        let cmd = AudioCommand::Drain { resp: tx_reply };
         self.sender.send(cmd).map_err(|_| Error::ChannelClosed)?;
         match rx_reply.await {
             Ok(Ok(())) => Ok(()),

@@ -20,13 +20,19 @@ impl MigrationTrait for Migration {
                     .table(Messages::Table)
                     .col(
                         ColumnDef::new(Messages::Id)
-                            .integer()
+                            .unsigned()
                             .not_null()
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(Messages::Sender).string().not_null())
-                    .col(ColumnDef::new(Messages::Content).string().not_null())
+                    .col(
+                        ColumnDef::new(Messages::SentAt)
+                            .timestamp()
+                            .default(Expr::current_timestamp())
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(Messages::Sender).string_len(30).null())
+                    .col(ColumnDef::new(Messages::Content).text().not_null())
                     .to_owned(),
             )
             .await
@@ -46,4 +52,5 @@ pub enum Messages {
     Id,
     Sender,
     Content,
+    SentAt,
 }

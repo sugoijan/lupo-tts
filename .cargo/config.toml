@@ -1,2 +1,8 @@
+# SPDX-FileCopyrightText: すごいジャン
+# SPDX-License-Identifier: Apache-2.0
+
 [build]
-rustflags = ["--cfg", "tokio_unstable"]
+rustflags = ["-C", "target-cpu=native"]
+
+[alias]
+xtask = "run --release --package xtask --"

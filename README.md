@@ -24,8 +24,6 @@ In bocca al lupo.
 
 ## Developing
 
-This project is based on Tauri+Leptos.
+This project uses Slint. Suggestions:
 
-For development:
-
-    cargo tauri dev
+- https://slintpad.com/ for UI editing

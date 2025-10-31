@@ -1,0 +1,99 @@
+import { SpinBox, Button, CheckBox, Slider, LineEdit, ScrollView, ListView,
+    HorizontalBox, VerticalBox, GridBox, StandardButton, Palette, ProgressIndicator, Spinner, TabWidget } from "std-widgets.slint";
+
+@rust-attr(derive(serde::Serialize, serde::Deserialize))
+export enum ProcessingState  {
+    added,
+    audio-generated,
+    audio-processed,
+}
+
+@rust-attr(derive(serde::Serialize, serde::Deserialize))
+export struct MessageItem  {
+    id: int,
+    title: string,
+    state: ProcessingState,
+}
+
+export component MainWindow inherits Window {
+    in property <[MessageItem]> todo-model: [];
+
+    in-out property <bool> is-sort-by-name: true;
+    in-out property <bool> hide-done-items: false;
+
+    callback todo-added(string);
+    callback play-now(string);
+    callback remove-done();
+
+    preferred-width: 610px;
+    preferred-height: 377px;
+
+    TabWidget {
+        Tab {
+            title: "First";
+            VerticalBox {
+                list-view := ListView {
+                    for todo in root.todo-model: HorizontalLayout {
+                        HorizontalLayout {
+                            Text {
+                                text: todo.title;
+                            }
+
+                            HorizontalLayout {
+                                alignment: LayoutAlignment.end;
+                                width: 50px;
+                                Spinner {
+                                    progress: 0.5;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                HorizontalBox {
+                    padding: 0px;
+                    Button {
+                        clicked => {
+                            root.remove-done();
+                        }
+                        text: "⏵";
+                    }
+                    text-edit := LineEdit {
+                        accepted(text) => {
+                            root.todo-added(self.text);
+                            self.text = "";
+                        }
+                        placeholder-text: "Manual message";
+                    }
+
+                    Button {
+                        clicked => {
+                            root.todo-added(text-edit.text);
+                            text-edit.text = "";
+                        }
+                        text: "Add to queue";
+                        enabled: text-edit.text != "";
+                    }
+
+                    Button {
+                        clicked => {
+                            root.play-now(text-edit.text);
+                            text-edit.text = "";
+                        }
+                        text: "Play now";
+                        enabled: text-edit.text != "";
+                    }
+                }
+            }
+        }
+
+        Tab {
+            title: "Second";
+            Rectangle {
+                background: pink;
+            }
+        }
+    }
+}
+
+export component MainWindow2 inherits Window { }

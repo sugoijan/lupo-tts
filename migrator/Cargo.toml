@@ -5,4 +5,4 @@ license.workspace = true
 edition.workspace = true
 
 [dependencies]
-sea-orm-migration = { version = "1", features = ["sqlx-sqlite", "runtime-tokio-native-tls"] }
+sea-orm-migration.workspace = true

@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
-use console_subscriber::ConsoleLayer;
 use std::error::Error;
-use tauri::Manager;
+use std::path::Path;
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_error::ErrorLayer;
 use tracing_subscriber::{
@@ -12,19 +11,12 @@ use tracing_subscriber::{
 };
 
 #[allow(dead_code)]
-struct LogGuard(WorkerGuard);
+pub struct LogGuard(WorkerGuard);
 
-pub fn setup_logging(app: &mut tauri::App) -> Result<(), Box<dyn Error>> {
-    // 1. Figure out where Tauri wants its logs
-    let log_dir = app.path().app_log_dir().expect("couldn't find log dir");
-    let app_name = &app.package_info().name;
-    let log_file = format!("{}.json-log", app_name);
-
+pub fn setup_logging(log_dir: impl AsRef<Path>) -> Result<LogGuard, Box<dyn Error>> {
     // 2. Create a non-blocking, daily-rotated file writer _and_ its guard
     let (writer, guard) =
-        tracing_appender::non_blocking(tracing_appender::rolling::daily(log_dir, log_file));
-    // keep the guard alive for the duration of the app
-    app.manage(LogGuard(guard));
+        tracing_appender::non_blocking(tracing_appender::rolling::daily(log_dir, "log"));
 
     // 3. Build an EnvFilter (fallback to INFO if LUPO_LOG unset)
     let env_filter_builder = EnvFilter::builder()
@@ -56,8 +48,8 @@ pub fn setup_logging(app: &mut tauri::App) -> Result<(), Box<dyn Error>> {
         .with(ErrorLayer::default())
         .with(file_layer)
         .with(stdout_layer)
-        .with(ConsoleLayer::builder().spawn()) // your tokio-console
+        //.with(console_subscriber::ConsoleLayer::builder().spawn()) // your tokio-console
         .init();
 
-    Ok(())
+    Ok(LogGuard(guard))
 }
