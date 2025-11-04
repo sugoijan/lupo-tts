@@ -6,6 +6,8 @@ use std::process::Command;
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand};
 
+const MACOS_TTS_HELPER_BINARY: &str = "lupo-tts-macos-helper";
+
 #[derive(Parser)]
 #[command(
     author,
@@ -23,11 +25,17 @@ enum Commands {
     /// Bundle a macOS .app for one of the front-end binaries.
     #[command(name = "bundle")]
     BundleMacos(BundleMacosArgs),
+    /// Build a workspace binary and the macOS TTS helper together.
+    #[command(name = "dev-build")]
+    DevBuild(DevBuildArgs),
+    /// Build and run a workspace binary with the macOS TTS helper present in target dir.
+    #[command(name = "dev-run")]
+    DevRun(DevRunArgs),
 }
 
 #[derive(Args)]
 struct BundleMacosArgs {
-    /// Binary name to bundle (e.g. lupo or lupo2).
+    /// Binary name to bundle (e.g. lupo).
     #[arg(long, default_value = "lupo")]
     app: String,
 
@@ -44,12 +52,66 @@ struct BundleMacosArgs {
     open: bool,
 }
 
+#[derive(Args)]
+struct DevBuildArgs {
+    /// Binary name to build (e.g. lupo, lupo2, lupo-cli).
+    #[arg(long, default_value = "lupo")]
+    bin: String,
+
+    /// Build with release profile.
+    #[arg(long)]
+    release: bool,
+}
+
+#[derive(Args)]
+struct DevRunArgs {
+    /// Binary name to run (e.g. lupo, lupo2, lupo-cli).
+    #[arg(long, default_value = "lupo")]
+    bin: String,
+
+    /// Run with release profile.
+    #[arg(long)]
+    release: bool,
+
+    /// Arguments forwarded to the target binary.
+    #[arg(last = true)]
+    args: Vec<String>,
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
         Commands::BundleMacos(args) => bundle_macos(args),
+        Commands::DevBuild(args) => dev_build(args),
+        Commands::DevRun(args) => dev_run(args),
     }
+}
+
+fn dev_build(args: DevBuildArgs) -> Result<()> {
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .context("xtask manifest dir has no parent")?
+        .to_path_buf();
+    build_binary_with_helper(&repo_root, &args.bin, args.release)
+}
+
+fn dev_run(args: DevRunArgs) -> Result<()> {
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .context("xtask manifest dir has no parent")?
+        .to_path_buf();
+    build_binary_with_helper(&repo_root, &args.bin, args.release)?;
+
+    let profile = if args.release { "release" } else { "debug" };
+    let binary_path = repo_root.join("target").join(profile).join(&args.bin);
+    if !binary_path.exists() {
+        anyhow::bail!("binary {} not found at {}", args.bin, binary_path.display());
+    }
+
+    let mut cmd = Command::new(&binary_path);
+    cmd.args(&args.args);
+    run(&mut cmd)
 }
 
 fn bundle_macos(args: BundleMacosArgs) -> Result<()> {
@@ -66,10 +128,26 @@ fn bundle_macos(args: BundleMacosArgs) -> Result<()> {
     let bundle_identifier = bundle_identifier_for(&binary_name);
 
     if !args.skip_build {
-        run(Command::new("cargo")
-            .args(["build", "--release", "--bin", &binary_name])
-            .current_dir(&repo_root))
-        .with_context(|| format!("failed to build {binary_name}"))?;
+        let mut build_cmd = Command::new("cargo");
+        build_cmd.args(["build", "--release", "--bin", &binary_name]);
+        if let Some(package_name) = package_for_binary(&binary_name) {
+            build_cmd.args(["-p", package_name]);
+        }
+
+        run(build_cmd.current_dir(&repo_root))
+            .with_context(|| format!("failed to build {binary_name}"))?;
+
+        let mut helper_build_cmd = Command::new("cargo");
+        helper_build_cmd.args([
+            "build",
+            "--release",
+            "-p",
+            "lupo-tts-macos",
+            "--bin",
+            MACOS_TTS_HELPER_BINARY,
+        ]);
+        run(helper_build_cmd.current_dir(&repo_root))
+            .context("failed to build macOS TTS helper binary")?;
     }
 
     let target_dir = repo_root.join("target/release");
@@ -79,6 +157,14 @@ fn bundle_macos(args: BundleMacosArgs) -> Result<()> {
             "release binary {} not found at {}",
             binary_name,
             release_binary.display()
+        );
+    }
+    let helper_binary = target_dir.join(MACOS_TTS_HELPER_BINARY);
+    if !helper_binary.exists() {
+        anyhow::bail!(
+            "helper binary {} not found at {}",
+            MACOS_TTS_HELPER_BINARY,
+            helper_binary.display()
         );
     }
 
@@ -92,22 +178,30 @@ fn bundle_macos(args: BundleMacosArgs) -> Result<()> {
         .join(format!("{sanitized_bundle_name}.app"));
     let contents_dir = bundle_dir.join("Contents");
     let macos_dir = contents_dir.join("MacOS");
+    let helpers_dir = contents_dir.join("Helpers");
     let resources_dir = contents_dir.join("Resources");
 
     if bundle_dir.exists() {
         fs::remove_dir_all(&bundle_dir).context("failed to remove existing bundle directory")?;
     }
     fs::create_dir_all(&macos_dir).context("failed to create MacOS directory")?;
+    fs::create_dir_all(&helpers_dir).context("failed to create Helpers directory")?;
     fs::create_dir_all(&resources_dir).context("failed to create Resources directory")?;
 
     fs::copy(&release_binary, macos_dir.join(&binary_name))
         .with_context(|| format!("failed to copy binary {}", release_binary.display()))?;
+    fs::copy(&helper_binary, helpers_dir.join(MACOS_TTS_HELPER_BINARY))
+        .with_context(|| format!("failed to copy helper binary {}", helper_binary.display()))?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         let mut perms = fs::metadata(macos_dir.join(&binary_name))?.permissions();
         perms.set_mode(0o755);
         fs::set_permissions(macos_dir.join(&binary_name), perms)?;
+        let mut helper_perms =
+            fs::metadata(helpers_dir.join(MACOS_TTS_HELPER_BINARY))?.permissions();
+        helper_perms.set_mode(0o755);
+        fs::set_permissions(helpers_dir.join(MACOS_TTS_HELPER_BINARY), helper_perms)?;
     }
 
     if icon_exists {
@@ -155,14 +249,14 @@ fn workspace_version(repo_root: &Path) -> Result<String> {
     let cargo_toml = fs::read_to_string(repo_root.join("Cargo.toml"))
         .context("failed to read workspace Cargo.toml")?;
     for line in cargo_toml.lines() {
-        if let Some(rest) = line.trim().strip_prefix("version") {
-            if let Some(eq_index) = rest.find('=') {
-                let value = rest[eq_index + 1..].trim();
-                if let Some(stripped) = value.trim_matches('"').split('#').next() {
-                    if !stripped.is_empty() {
-                        return Ok(stripped.to_string());
-                    }
-                }
+        if let Some(rest) = line.trim().strip_prefix("version")
+            && let Some(eq_index) = rest.find('=')
+        {
+            let value = rest[eq_index + 1..].trim();
+            if let Some(stripped) = value.trim_matches('"').split('#').next()
+                && !stripped.is_empty()
+            {
+                return Ok(stripped.to_string());
             }
         }
     }
@@ -175,8 +269,6 @@ fn sanitize_bundle_name(name: &str) -> String {
         .map(|c| {
             if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_') {
                 c
-            } else if c.is_whitespace() {
-                ' '
             } else {
                 ' '
             }
@@ -193,7 +285,6 @@ fn sanitize_bundle_name(name: &str) -> String {
 fn default_display_name(binary: &str) -> String {
     match binary {
         "lupo" => "Lupo".to_string(),
-        "lupo2" => "Lupo (GPUI)".to_string(),
         other => {
             let mut chars = other.chars();
             match chars.next() {
@@ -204,10 +295,18 @@ fn default_display_name(binary: &str) -> String {
     }
 }
 
+fn package_for_binary(binary: &str) -> Option<&'static str> {
+    match binary {
+        "lupo" => Some("lupo-app"),
+        "lupo2" => Some("lupo-app2"),
+        "lupo-cli" => Some("lupo-cli"),
+        _ => None,
+    }
+}
+
 fn bundle_identifier_for(binary: &str) -> String {
     match binary {
         "lupo" => "dev.sugoijan.lupo".to_string(),
-        "lupo2" => "dev.sugoijan.lupo.gpui".to_string(),
         other => format!("dev.sugoijan.lupo.{other}"),
     }
 }
@@ -219,6 +318,33 @@ fn run(cmd: &mut Command) -> Result<()> {
     if !status.success() {
         anyhow::bail!("command {:?} exited with {}", cmd, status);
     }
+    Ok(())
+}
+
+fn build_binary_with_helper(repo_root: &Path, binary_name: &str, release: bool) -> Result<()> {
+    let mut build_cmd = Command::new("cargo");
+    build_cmd.arg("build");
+    if release {
+        build_cmd.arg("--release");
+    }
+    build_cmd.args(["--bin", binary_name]);
+    if let Some(package_name) = package_for_binary(binary_name) {
+        build_cmd.args(["-p", package_name]);
+    }
+    run(build_cmd.current_dir(repo_root))
+        .with_context(|| format!("failed to build {binary_name}"))?;
+
+    if cfg!(target_os = "macos") {
+        let mut helper_build_cmd = Command::new("cargo");
+        helper_build_cmd.arg("build");
+        if release {
+            helper_build_cmd.arg("--release");
+        }
+        helper_build_cmd.args(["-p", "lupo-tts-macos", "--bin", MACOS_TTS_HELPER_BINARY]);
+        run(helper_build_cmd.current_dir(repo_root))
+            .context("failed to build macOS TTS helper binary")?;
+    }
+
     Ok(())
 }
 

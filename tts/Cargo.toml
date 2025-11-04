@@ -3,5 +3,6 @@ name = "lupo-tts"
 version.workspace = true
 license.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 [dependencies]

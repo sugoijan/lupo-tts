@@ -90,7 +90,7 @@ Status strip instrumentation and placement will be finalized during UI prototypi
   - **Command acceptance:** configure who can issue chat-based control commands. Options include `Nobody`, `Moderators` (default), or `Channel owner only`. The operator always retains full local controls regardless of this preference.
   - **Text transformation:** configurable template system to adjust spoken output (e.g., `{user} said {message}`) with localization-ready placeholders.
   - **TTS provider selection:** define provider priority, fallback rules, and per-provider configuration (voice sets, rate, pitch).
-  - **Offline TTS strategy:** package VoiRS as the primary local engine with a default multilingual voice pack, expose download controls for optional languages, and document expected disk/CPU footprints. Summarize the trade-offs between offline (higher local CPU/GPU load, no provider spend) and online (billable usage, network-dependent latency) engines inline, then link to the built-in help topic that covers detailed cost/latency comparisons and instructions for running the latency test harness. Provide an opt-in ultra-light engine for constrained devices and surface availability of system TTS capture (only enabled on platforms where emitting WAV output is supported) so operators can choose between bundled and native voices.
+  - **Offline TTS strategy:** package Parler as the primary local engine with a default multilingual voice pack, expose download controls for optional languages, and document expected disk/CPU footprints. Summarize the trade-offs between offline (higher local CPU/GPU load, no provider spend) and online (billable usage, network-dependent latency) engines inline, then link to the built-in help topic that covers detailed cost/latency comparisons and instructions for running the latency test harness. Provide an opt-in ultra-light engine for constrained devices and surface availability of system TTS capture (only enabled on platforms where emitting WAV output is supported) so operators can choose between bundled and native voices.
   - **Voice strategy:** choose between per-user assignments, message-type overrides, or broadcast-wide defaults. Provide an editor for per-user overrides (display name, preferred voice, tuning parameters).
   - **Audio output:** select default or specific audio devices.
 - Expose an entry point to `Advanced Settings` along with a warning about elevated risk. Access requires confirming a safety prompt and may optionally demand a modifier-key shortcut as a guard rail.
@@ -141,28 +141,29 @@ Status strip instrumentation and placement will be finalized during UI prototypi
   - Use OAuth2 PKCE or token-based flows as recommended by each provider.
   - Attempt silent token refresh in the background using provider refresh tokens when permitted; renew five minutes before expiry by default. On refresh failures, surface a warning badge on the connection card that links directly to settings.
   - When background refresh is unavailable, expose a `Refresh` control in the provider settings entry that launches the full OAuth2 authorization flow.
-  - Store long-lived credentials in secure operating-system facilities (Keychain on macOS, Credential Manager on Windows, Secret Service on Linux) when available. Store an app-generated salt alongside an app-prefixed key identifier so a per-install private key can be derived and used to encrypt any serialized secrets held outside the OS vault.
+  - Store long-lived credentials under the application data directory of each platform using a lightweight embedded database.
   - Present secrets to the rest of the application through an abstraction (e.g., `secrecy::SecretBox`) so upper layers remain agnostic of the underlying storage, and zero memory copies when secrets leave the abstraction.
   - Secrets are not exposed in plain text UI surfaces. Provide a revoke action that deletes locally cached tokens and clears the derived key material.
 - Supported providers:
   - **Twitch Chat:** requires read access for the target channel and moderation scopes if history backfill is desired. Handle reconnects and history gaps after network loss.
   - **YouTube Live Chat:** supports concurrent operation with Twitch. Prompt the user to select the active broadcast if multiple exist.
-  - **Bundled offline TTS (VoiRS):** ships with the installer as the primary local engine, preconfigured with a general-purpose multilingual voice set. Document disk footprint targets, GPU/CPU requirements, and optional voice pack downloads.
-  - **Lightweight offline fallback:** include a minimal-asset engine for low-resource environments. The UI surfaces diminished quality expectations and allows operators to switch back to VoiRS when resources permit.
+  - **Bundled offline TTS (Parler):** ships with the installer as the primary local engine, preconfigured with a general-purpose multilingual voice set. Document disk footprint targets, GPU/CPU requirements, and optional voice pack downloads.
+  - **Lightweight offline fallback:** include a minimal-asset engine for low-resource environments. The UI surfaces diminished quality expectations and allows operators to switch back to Parler when resources permit.
   - **Local message injection:** treat operator-authored or scripted messages as a first-class `local` provider. Local items honour the same filtering, prioritization, and persistence rules as external sources so the app remains fully usable offline.
   - **System TTS capture:** where the OS exposes APIs to render speech to a WAV/PCM stream (macOS `NSSpeechSynthesizer`, Windows SAPI `SpFileStream`, Linux Speech Dispatcher modules), expose it as a provider option with capability detection.
   - **Cloud TTS providers:** OpenAI, AWS Polly, Google Cloud Text-to-Speech, Azure Speech. Each provider can be enabled independently, and the UI must indicate quota usage or authentication expiry when reported by the provider.
 
 ## System Architecture Overview
 
-- **Desktop shell:** renders UI (Slint or GPUI prototype) and coordinates user interactions.
+- **Desktop shell:** renders UI with the Dioxus application (`app`, `lupo-app`) and coordinates user interactions.
+- **Iced experiment:** `app2` (`lupo-app2`) remains available as a lighter, cross-platform shell experiment on a backburner track.
 - **Connection manager:** owns authentication state, provider adapters, and reconnection policies.
 - **Message pipeline:** implements ingestion, filtering, transformation, and queue management.
 - **TTS engine abstraction:** routes synthesis requests to configured providers, returning standardized audio buffers and metadata.
 - **Audio playback engine:** mixes and plays audio, supports real-time queue updates, and exposes global volume control.
 - **Local persistence:** stores configuration, chatter overrides, and playback state on disk using workspace-approved mechanisms. Secrets are stored via platform-secure storage where feasible.
 
-Workspace crates align with these components: `app-slint` and `app-gpui` host the desktop shell prototypes, `audio` and `tts` (plus `tts-openai`) encapsulate playback and synthesis adapters, `models` and `migrator` cover persistence and migrations, and `secrets` wraps secure storage integrations.
+Workspace crates align with these components: `app` hosts the desktop shell, `audio` and `tts` (plus `tts-openai`) encapsulate playback and synthesis adapters, `models` and `migrator` cover persistence and migrations, and `secrets` wraps secure storage integrations.
 
 ## Reliability and Recovery
 

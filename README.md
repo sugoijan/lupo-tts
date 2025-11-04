@@ -21,9 +21,35 @@ In bocca al lupo.
 - [ ] Ignore 3rd-party (BTTV, FFZ, 7TV) emotes
 - [ ] Support other TTS engines
 
+## Known Issues
+
+Active issues are tracked in [KNOWN_ISSUES.md](KNOWN_ISSUES.md).
+
+## CLI Emote Utilities
+
+The `lupo-cli twitch emotes` commands can inspect enabled third-party collections:
+
+- `lupo-cli twitch emotes 7tv [--global|--channel <login>]`
+- `lupo-cli twitch emotes bttv [--global|--channel <login>]`
+- `lupo-cli twitch emotes ffz [--global|--channel <login>]`
+
+Each variant fetches the corresponding provider's global set or the Twitch channel's emotes, echoing previews and modifier metadata when available.
+
 
 ## Developing
 
-This project uses Slint. Suggestions:
+Current desktop shells:
 
-- https://slintpad.com/ for UI editing
+- `cargo run -p lupo-app` runs the default Dioxus shell (`lupo`, webview renderer default).
+- `cargo run -p lupo-app --no-default-features --features renderer-native` runs the native-feature variant (`lupo`).
+- `cargo run -p lupo-app2` runs the Iced experimental shell (`lupo2`, backburner track).
+
+Bundle commands:
+
+- `cargo xtask bundle --app lupo`
+- `cargo xtask bundle --app lupo2`
+
+Framework references:
+
+- [Iced docs](https://docs.rs/iced/latest/iced/)
+- [Dioxus docs](https://docs.rs/dioxus/latest/dioxus/)

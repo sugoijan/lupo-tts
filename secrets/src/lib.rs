@@ -11,17 +11,30 @@ use std::str::FromStr;
 #[non_exhaustive]
 pub enum Secret {
     OpenaiApiKey,
+    TwitchAccessToken,
+    TwitchRefreshToken,
 }
+
+pub mod secure;
+pub use secure::{
+    SecureStoreError, SecureStoreResult, delete_secret, load_secret_string, store_secret,
+};
 
 impl Secret {
     pub fn iter_all_secrets() -> Iter<'static, Self> {
-        static ALL: [Secret; 1] = [Secret::OpenaiApiKey];
+        static ALL: [Secret; 3] = [
+            Secret::OpenaiApiKey,
+            Secret::TwitchAccessToken,
+            Secret::TwitchRefreshToken,
+        ];
         ALL.iter()
     }
 
     pub fn override_from_env(self) -> bool {
         match self {
-            Secret::OpenaiApiKey => true,
+            Secret::OpenaiApiKey => false,
+            Secret::TwitchAccessToken => false,
+            Secret::TwitchRefreshToken => false,
         }
     }
 }

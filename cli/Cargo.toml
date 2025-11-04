@@ -1,0 +1,39 @@
+[package]
+name = "lupo-cli"
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+lupo-audio.workspace = true
+lupo-tts-openai.workspace = true
+lupo-tts-parler.workspace = true
+lupo-configuration.workspace = true
+lupo-persistence.workspace = true
+lupo-secrets.workspace = true
+messages-twitch.workspace = true
+messages.workspace = true
+emotes-7tv.workspace = true
+emotes-ffz.workspace = true
+emotes-bttv.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+time.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+webbrowser.workspace = true
+tokio-tungstenite.workspace = true
+futures-util.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+lupo-tts-macos.workspace = true
+
+[dev-dependencies]
+assert_cmd = "2"
+serde_json.workspace = true
+tempfile.workspace = true

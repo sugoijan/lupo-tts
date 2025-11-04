@@ -6,3 +6,9 @@ rustflags = ["-C", "target-cpu=native"]
 
 [alias]
 xtask = "run --release --package xtask --"
+dev-build-lupo = "xtask dev-build --bin lupo"
+dev-build-lupo2 = "xtask dev-build --bin lupo2"
+dev-build-lupo-cli = "xtask dev-build --bin lupo-cli"
+dev-run-lupo = "xtask dev-run --bin lupo"
+dev-run-lupo2 = "xtask dev-run --bin lupo2"
+dev-run-lupo-cli = "xtask dev-run --bin lupo-cli"

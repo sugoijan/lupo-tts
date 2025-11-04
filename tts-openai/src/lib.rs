@@ -37,11 +37,28 @@ struct SpeechRequest {
 }
 
 impl SpeechRequest {
-    fn new_default<S: Into<String>>(input: S) -> Self {
+    fn from_options<S: Into<String>>(input: S, options: &SpeechOptions) -> Self {
+        Self {
+            model: options.model.clone(),
+            voice: options.voice.clone(),
+            input: input.into(),
+            response_format: options.response_format.clone(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct SpeechOptions {
+    pub model: String,
+    pub voice: String,
+    pub response_format: String,
+}
+
+impl Default for SpeechOptions {
+    fn default() -> Self {
         Self {
             model: "gpt-4o-mini-tts".to_string(),
             voice: "alloy".to_string(),
-            input: input.into(),
             response_format: "wav".to_string(),
         }
     }
@@ -84,7 +101,16 @@ impl OpenAi {
     }
 
     pub async fn text_to_speech<S: Into<String>>(&self, message: S) -> Result<Bytes, Error> {
-        let body = SpeechRequest::new_default(message);
+        self.text_to_speech_with_options(message, &SpeechOptions::default())
+            .await
+    }
+
+    pub async fn text_to_speech_with_options<S: Into<String>>(
+        &self,
+        message: S,
+        options: &SpeechOptions,
+    ) -> Result<Bytes, Error> {
+        let body = SpeechRequest::from_options(message, options);
 
         debug!("send request to OpenAI: {:?}", &body);
         let resp = self
