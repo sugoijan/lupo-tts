@@ -3,7 +3,6 @@
 ## Project Structure & Module Organization
 Workspace crates keep responsibilities narrow:
 - `app/`: Lupo desktop shell built with Dioxus; primary desktop app (`lupo-app`, bin `lupo`).
-- `app2/`: Iced-based experimental shell (`lupo-app2`, bin `lupo2`).
 - `cli/`: Command-line utilities for emote inspection and maintenance tasks.
 - `models/`: SeaORM entities and shared domain types (export via `prelude.rs`).
 - `migrator/`: migrations named `mYYYYMMDD_hhmmss_description.rs`; update `lib.rs` when adding one.

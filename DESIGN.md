@@ -156,7 +156,6 @@ Status strip instrumentation and placement will be finalized during UI prototypi
 ## System Architecture Overview
 
 - **Desktop shell:** renders UI with the Dioxus application (`app`, `lupo-app`) and coordinates user interactions.
-- **Iced experiment:** `app2` (`lupo-app2`) remains available as a lighter, cross-platform shell experiment on a backburner track.
 - **Connection manager:** owns authentication state, provider adapters, and reconnection policies.
 - **Message pipeline:** implements ingestion, filtering, transformation, and queue management.
 - **TTS engine abstraction:** routes synthesis requests to configured providers, returning standardized audio buffers and metadata.

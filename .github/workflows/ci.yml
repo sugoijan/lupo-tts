@@ -1,0 +1,51 @@
+# Continuous checks for LUPO TTS: formatting, strict clippy, tests, and the
+# opt-in native renderer build. Mirrors the commands documented in AGENTS.md.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # Override `.cargo/config.toml`'s `-C target-cpu=native`: on GitHub's
+  # virtualized Apple Silicon runners LLVM cannot identify the host CPU and
+  # falls back to a featureless generic aarch64, which breaks `ring`'s
+  # compile-time assertion that aarch64-apple-darwin always has AES/SHA2/NEON.
+  # An empty (but set) RUSTFLAGS takes precedence over `build.rustflags`.
+  RUSTFLAGS: ''
+
+jobs:
+  check:
+    name: Check (macOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true # one level: vendor/obs-studio has its own submodules we do not need
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test --workspace
+
+      - name: Check native renderer feature
+        run: cargo check -p lupo-app --no-default-features --features renderer-native

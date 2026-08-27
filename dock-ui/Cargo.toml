@@ -1,0 +1,20 @@
+[package]
+name = "lupo-dock-ui"
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Dioxus (wasm) UI for the LUPO dock; served by the OBS plugin's local server."
+
+[[bin]]
+name = "lupo-dock-ui"
+path = "src/main.rs"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+dioxus = { workspace = true, features = ["web"] }
+lupo-ui-protocol.workspace = true
+serde_json.workspace = true
+futures-util.workspace = true
+gloo-net.workspace = true
+gloo-timers.workspace = true
+web-sys.workspace = true

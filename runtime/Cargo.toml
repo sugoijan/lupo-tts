@@ -1,0 +1,43 @@
+[package]
+name = "lupo-runtime"
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+lupo-audio.workspace = true
+lupo-persistence.workspace = true
+lupo-configuration.workspace = true
+lupo-secrets.workspace = true
+lupo-ui-protocol.workspace = true
+lupo-tts-openai.workspace = true
+lupo-tts-parler.workspace = true
+messages.workspace = true
+messages-twitch.workspace = true
+emotes-7tv.workspace = true
+emotes-bttv.workspace = true
+emotes-ffz.workspace = true
+url.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+async-channel.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tracing-appender.workspace = true
+tracing-error.workspace = true
+reqwest.workspace = true
+rustls.workspace = true
+time.workspace = true
+sha2.workspace = true
+hex.workspace = true
+hound.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+lupo-tts-macos.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

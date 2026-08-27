@@ -58,6 +58,8 @@ struct Cli {
 }
 
 fn main() -> Result<()> {
+    // Both rustls crypto backends are compiled in; select one before any TLS use.
+    let _ = rustls::crypto::ring::default_provider().install_default();
     tracing_subscriber::fmt::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .with_writer(std::io::stderr)

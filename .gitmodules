@@ -1,3 +1,8 @@
 [submodule "vendor/directories-rs"]
 	path = vendor/directories-rs
 	url = https://github.com/sugoijan/directories-rs.git
+[submodule "vendor/obs-studio"]
+	path = vendor/obs-studio
+	url = https://github.com/obsproject/obs-studio
+	shallow = true
+	branch = 31.0.3

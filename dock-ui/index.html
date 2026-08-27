@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>LUPO TTS</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { color-scheme: dark; --bg: #1f2023; --panel: #2b2d31; --fg: #e6e6e6; --dim: #9a9ca3;
+          --accent: #4c8dff; --ok: #3fb950; --warn: #d29922; --err: #f85149; --border: #3a3c42; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { position: sticky; top: 0; z-index: 2; background: var(--panel); border-bottom: 1px solid var(--border); padding: 8px 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  header .status { flex: 1 1 100%; color: var(--dim); font-size: 12px; display: flex; gap: 12px; flex-wrap: wrap; }
+  header .volume { display: flex; align-items: center; gap: 6px; color: var(--dim); font-size: 12px; }
+  header .volume input { width: 90px; accent-color: var(--accent); }
+  button { background: #3a3c42; color: var(--fg); border: 1px solid var(--border); border-radius: 4px; padding: 4px 9px; cursor: pointer; font: inherit; }
+  button:hover { background: #45474e; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.danger:hover { background: var(--err); border-color: var(--err); color: #fff; }
+  button.small { padding: 2px 7px; font-size: 12px; }
+  input { background: #1a1b1e; color: var(--fg); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; font: inherit; flex: 1; min-width: 120px; }
+  main { padding: 8px 10px; }
+  h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); margin: 12px 0 6px; }
+  .settings { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 4px 12px 12px; margin: 8px 0; }
+  .settings .group { margin-top: 4px; }
+  .settings .row { display: flex; gap: 6px; margin: 6px 0; align-items: center; }
+  .settings p { margin: 6px 0; }
+  .settings .code { font-size: 16px; letter-spacing: .12em; background: #1a1b1e; padding: 2px 8px; border-radius: 4px; }
+  .settings a { color: var(--accent); }
+  .providers { list-style: none; margin: 4px 0; padding: 0; }
+  .providers li { margin: 3px 0; }
+  .provider-state { display: inline-block; width: 8px; height: 8px; border-radius: 999px; margin-right: 7px; background: var(--dim); }
+  .provider-state.ok { background: var(--ok); }
+  .provider-state.off { background: var(--warn); }
+  .provider-state.err { background: var(--err); }
+  .msg { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; padding: 6px 8px; margin-bottom: 4px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; }
+  .msg.playing { border-color: var(--accent); }
+  .msg .who { font-weight: 600; }
+  .msg .who .state { font-weight: 400; color: var(--dim); margin-left: 6px; font-size: 11px; }
+  .msg .text { grid-column: 1 / -1; white-space: pre-wrap; word-break: break-word; }
+  .msg .actions { display: flex; gap: 4px; }
+  .empty { color: var(--dim); font-style: italic; padding: 6px 8px; }
+  .pill { padding: 1px 7px; border-radius: 999px; font-size: 11px; border: 1px solid var(--border); }
+  .pill.on { border-color: var(--ok); color: var(--ok); }
+  .pill.off { border-color: var(--warn); color: var(--warn); }
+  .pill.down { border-color: var(--err); color: var(--err); }
+  .toast { position: fixed; bottom: 10px; left: 10px; right: 10px; z-index: 3; background: var(--err); color: #fff; padding: 6px 10px; border-radius: 6px; display: flex; justify-content: space-between; gap: 8px; }
+  .dim { color: var(--dim); }
+  .ok { color: var(--ok); }
+  .err { color: var(--err); }
+</style>
+</head>
+<body>
+<div id="main"></div>
+<script type="module">
+  import init from "/assets/dock_ui.js";
+  init({ module_or_path: "/assets/dock_ui_bg.wasm" });
+</script>
+</body>
+</html>

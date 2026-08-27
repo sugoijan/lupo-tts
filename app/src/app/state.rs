@@ -12,9 +12,9 @@ use serde_json::to_string_pretty;
 use time::OffsetDateTime;
 use url::Url;
 
-use crate::runtime::pipeline::RuntimeTtsProviderStatus;
-use crate::runtime::twitch::TwitchStatus;
-use crate::runtime::youtube::YouTubeStatus;
+use lupo_runtime::pipeline::RuntimeTtsProviderStatus;
+use lupo_runtime::twitch::TwitchStatus;
+use lupo_runtime::youtube::YouTubeStatus;
 
 pub const HISTORY_LIMIT: usize = 500;
 pub const ADVANCED_CHANGE_HISTORY_LIMIT: usize = 100;

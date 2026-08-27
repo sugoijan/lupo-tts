@@ -44,7 +44,7 @@ Use this as review input after all implementation phases to plan targeted refact
 - Status: Deferred
 - Source: `IMPLEMENTATION_PLAN.md` test scenarios, "UI tests for stop confirmation, quit interception, advanced-settings confirmation."
 - Why skipped:
-  - Shell view behavior is currently tested manually (Dioxus default and Iced experiment); there is no stable UI test harness for modal/prompt flows.
+  - Shell view behavior is currently tested manually (Dioxus shell); there is no stable UI test harness for modal/prompt flows.
   - Quit interception depends on app-global wiring and window lifecycle callbacks that are not isolated for tests.
 - Largest architectural changes needed:
   - Split UI behavior into a testable view-model/state reducer independent of rendering widgets.

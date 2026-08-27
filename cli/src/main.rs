@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 use anyhow::{Context, Result, anyhow, bail};
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use lupo_audio::Audio;
+use lupo_audio::{AudioSink, DeviceSink};
 use lupo_configuration::{
     SettingDomain, SettingRecord, SettingSource, SettingsService, SettingsSnapshot,
     SnapshotApplyOptions,
@@ -394,6 +394,9 @@ impl SecretName {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
+    // The dependency graph enables both rustls crypto backends; pick one before
+    // any TLS config is built (see lupo-app for the same guard).
+    let _ = rustls::crypto::ring::default_provider().install_default();
     init_tracing();
 
     match Cli::parse() {
@@ -448,10 +451,10 @@ async fn run_speak(args: &SpeakArgs) -> Result<()> {
         Backend::Parler => synthesize_with_parler(args, &message).await?,
     };
 
-    let audio = Audio::start_default().context("failed to initialize audio output")?;
+    let audio = DeviceSink::start_default().context("failed to initialize audio output")?;
 
     audio
-        .play_wav(audio_data)
+        .play_wav(audio_data.into())
         .await
         .context("failed to enqueue audio data for playback")?;
 

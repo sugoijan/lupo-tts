@@ -5,6 +5,12 @@ license.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 
+[features]
+default = ["device"]
+# Playback through the default output device via rodio/cpal. Hosts that push
+# PCM into their own mixer (e.g. the OBS plugin) turn this off.
+device = ["rodio/playback"]
+
 [dependencies]
 tracing.workspace = true
 tokio.workspace = true

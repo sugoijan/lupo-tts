@@ -1,0 +1,13 @@
+[package]
+name = "lupo-ui-protocol"
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "JSON wire protocol between the LUPO runtime and its thin web UIs (wasm-safe: serde only)."
+
+[dependencies]
+serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

@@ -41,9 +41,9 @@ use super::state::{
     AppState, ChatterEntry, ChatterOverrideFilter, ChatterRoleFilter, MessageDisplaySegment,
     MessageEntry, MessageStatus, Tab,
 };
-use crate::runtime::pipeline::{RuntimeTtsProviderState, RuntimeTtsProviderStatus};
-use crate::runtime::twitch::TwitchStatus;
-use crate::runtime::youtube::YouTubeStatus;
+use lupo_runtime::pipeline::{RuntimeTtsProviderState, RuntimeTtsProviderStatus};
+use lupo_runtime::twitch::TwitchStatus;
+use lupo_runtime::youtube::YouTubeStatus;
 
 #[cfg(feature = "renderer-webview")]
 const EMOTE_ASSET_ROUTE: &str = "emote";

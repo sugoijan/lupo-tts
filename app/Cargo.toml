@@ -18,44 +18,21 @@ renderer-webview = ["dep:dioxus-desktop"]
 dioxus.workspace = true
 dioxus-desktop = { workspace = true, optional = true }
 dioxus-native = { workspace = true, optional = true }
-lupo-audio.workspace = true
+lupo-runtime.workspace = true
+lupo-audio = { workspace = true, features = ["device"] }
 lupo-persistence.workspace = true
 lupo-tts.workspace = true
-lupo-tts-openai.workspace = true
-lupo-tts-parler.workspace = true
 lupo-configuration.workspace = true
 lupo-secrets.workspace = true
+messages.workspace = true
 url.workspace = true
-serde.workspace = true
 serde_json.workspace = true
 directories.workspace = true
-anyhow.workspace = true
-iddqd.workspace = true
-smallvec.workspace = true
-thiserror.workspace = true
 tokio.workspace = true
+async-channel.workspace = true
 tracing.workspace = true
-tracing-subscriber.workspace = true
-tracing-appender.workspace = true
-tracing-log.workspace = true
-tracing-error.workspace = true
-messages.workspace = true
-messages-twitch.workspace = true
-emotes-7tv.workspace = true
-emotes-bttv.workspace = true
-emotes-ffz.workspace = true
-reqwest.workspace = true
 time.workspace = true
 unicode-segmentation.workspace = true
-async-channel = "2"
-sha2.workspace = true
-hex.workspace = true
-hound.workspace = true
-
-[target.'cfg(target_os = "macos")'.dependencies]
-core-text = "=21.0.0"
-lupo-tts-macos.workspace = true
 
 [dev-dependencies]
-rustls.workspace = true
 tempfile.workspace = true

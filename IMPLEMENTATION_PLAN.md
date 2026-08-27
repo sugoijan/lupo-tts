@@ -59,7 +59,7 @@ Implementation slices (ready to code):
 
 1) Persistence contract + versioned compatibility
 
-- Files: `persistence/src/lib.rs`, `app/src/runtime/pipeline.rs`
+- Files: `persistence/src/lib.rs`, `runtime/src/pipeline.rs`
 - Add canonical header fields and supporting types:
   - `provider_message_id: Option<String>`
   - `channel_id: Option<String>`
@@ -74,7 +74,7 @@ Implementation slices (ready to code):
 
 2) Ingestion enrichment to feed canonical schema
 
-- Files: `messages-twitch/src/eventsub.rs`, `app/src/runtime/twitch.rs`, `app/src/runtime/pipeline.rs`
+- Files: `messages-twitch/src/eventsub.rs`, `runtime/src/twitch.rs`, `runtime/src/pipeline.rs`
 - Extend Twitch chat message surface with canonical IDs/timestamps needed by filtering:
   - chatter user ID, provider message ID, broadcaster/channel ID, source timestamp when available.
 - Populate `NewMessage` canonical fields from Twitch payloads.
@@ -83,7 +83,7 @@ Implementation slices (ready to code):
 
 3) Explicit filtering stage in pipeline core
 
-- Files: `app/src/runtime/pipeline.rs`
+- Files: `runtime/src/pipeline.rs`
 - Add filtering queue, worker(s), stage results, and scheduling branch:
   - `Arrived -> Filtering -> (Filtered | Skipped)`
   - `Filtered -> Transformation` only.
@@ -92,7 +92,7 @@ Implementation slices (ready to code):
 
 4) Settings-backed filter and command policy evaluation
 
-- Files: `app/src/runtime/pipeline.rs`, `configuration/src/lib.rs` (read-only unless schema shape changes)
+- Files: `runtime/src/pipeline.rs`, `configuration/src/lib.rs` (read-only unless schema shape changes)
 - Parse `message_filtering` and `command_acceptance` setting values into typed runtime policy.
 - Enforce:
   - general ignore prefix rule
@@ -104,7 +104,7 @@ Implementation slices (ready to code):
 
 5) Moderator deletion handling + precedence rule
 
-- Files: `messages-twitch/src/eventsub.rs`, `app/src/runtime/twitch.rs`, `app/src/runtime/pipeline.rs`
+- Files: `messages-twitch/src/eventsub.rs`, `runtime/src/twitch.rs`, `runtime/src/pipeline.rs`
 - Subscribe/parse moderator deletion events and route to pipeline by provider message ID.
 - Transition matching non-played messages to `Skipped(ModeratorDeleted)` with reason code.
 - Ignore moderator delete for already played messages.
@@ -151,7 +151,7 @@ Phase-2 implementation slices (ready to code):
 
 1) Operator actions + playback policy state in pipeline core
 
-- Files: `app/src/runtime/pipeline.rs`, `persistence/src/lib.rs` (only if state model additions are needed)
+- Files: `runtime/src/pipeline.rs`, `persistence/src/lib.rs` (only if state model additions are needed)
 - Add new pipeline commands and public entry points:
   - `skip_message(message_id)`
   - `retry_message(message_id)`
@@ -165,7 +165,7 @@ Phase-2 implementation slices (ready to code):
 
 2) Queue scheduler + overflow and prediction guards
 
-- Files: `app/src/runtime/pipeline.rs`, `configuration/src/lib.rs` (if additional advanced keys are required)
+- Files: `runtime/src/pipeline.rs`, `configuration/src/lib.rs` (if additional advanced keys are required)
 - Add queue model that tracks:
   - ordered candidate set by priority + override markers
   - predicted queue duration budget
@@ -177,7 +177,7 @@ Phase-2 implementation slices (ready to code):
 
 3) Playback stage semantics + interruption correctness
 
-- Files: `app/src/runtime/pipeline.rs`, `audio/src/lib.rs` (only if cancel/flush API extension is required)
+- Files: `runtime/src/pipeline.rs`, `audio/src/lib.rs` (only if cancel/flush API extension is required)
 - Transition to `Played` only after actual playback drain.
 - Add stop/skip-current behavior that interrupts active playback and keeps remaining queue.
 - Ensure `stop_now` is idempotent and race-safe with concurrent stage results.
@@ -204,7 +204,7 @@ Phase-2 implementation slices (ready to code):
 
 6) Session persistence for phase-2 controls
 
-- Files: `persistence/src/lib.rs`, `app/src/runtime/pipeline.rs`, `app/src/app/model.rs`
+- Files: `persistence/src/lib.rs`, `runtime/src/pipeline.rs`, `app/src/app/model.rs`
 - Persist and restore:
   - playback toggle state,
   - queue cursor / next-candidate ordering hints needed for deterministic resume.
@@ -267,7 +267,7 @@ Phase-3 implementation slices (remaining work after Dioxus rework):
 
 2) Connection cards + secure secret controls
 
-- Files: `app/src/app/action.rs`, `app/src/app/model.rs`, `app/src/app/ui.rs`, `app/src/runtime/twitch.rs`, `secrets/src/lib.rs`
+- Files: `app/src/app/action.rs`, `app/src/app/model.rs`, `app/src/app/ui.rs`, `runtime/src/twitch.rs`, `secrets/src/lib.rs`
 - Add connection cards with state indicator, reconnect action, and revoke action.
 - Add OpenAI key controls (set/update/revoke) in UI:
   - write via secure-store helpers,
@@ -277,7 +277,7 @@ Phase-3 implementation slices (remaining work after Dioxus rework):
 
 3) Live runtime behavior updates from settings
 
-- Files: `app/src/app/model.rs`, `app/src/runtime/pipeline.rs`, `app/src/runtime/twitch.rs`
+- Files: `app/src/app/model.rs`, `runtime/src/pipeline.rs`, `runtime/src/twitch.rs`
 - On save, persist via `SettingsService` and immediately apply behavior where supported:
   - filtering and command acceptance (next message evaluation),
   - advanced scheduler limits (next budget check),
@@ -403,6 +403,16 @@ Checklist:
 - [x] YouTube connector ingestion/normalization tests.
 - [ ] UI tests for stop confirmation, quit interception, advanced-settings confirmation.
 - [ ] Session restore tests after forced restart/crash simulation.
+
+## Native Renderer Gate
+
+Carried over from the retired `DIOXUS_SHELL_PLAN.md`. `lupo-app` defaults to `renderer-webview`; `renderer-native` (`dioxus-native`) is opt-in via `cargo run -p lupo-app --no-default-features --features renderer-native` and stays experimental until this gate passes.
+
+- [x] `cargo check -p lupo-app --no-default-features --features renderer-native` compiles (verified 2026-08-27; emits dead-code warnings for webview-only menu constants in `app/src/app/action.rs`).
+- [ ] Full 4-tab manual smoke walkthrough on the native build (launch, manual injection lifecycle, play/stop/clear, stop confirmation, quit interception, settings save/reset/discard/reload, advanced guard, status strip).
+- [ ] Keyboard shortcuts verified across platform input backends.
+- [ ] No blocker-level regression in queue/playback/settings/quit flows.
+- [ ] Decision entry recorded here before flipping the default renderer feature.
 
 ## Assumptions and Defaults
 

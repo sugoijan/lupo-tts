@@ -194,7 +194,8 @@ pub async fn fetch_user_identity(
             display_name: identity.display_name,
         }),
         Err(err) => {
-            if let Some(HelixError::ApiError { status: 401, .. }) = err.downcast_ref::<HelixError>() {
+            if let Some(HelixError::ApiError { status: 401, .. }) = err.downcast_ref::<HelixError>()
+            {
                 Err(TwitchUnauthorizedError.into())
             } else {
                 Err(err)
@@ -217,7 +218,9 @@ pub async fn refresh_access_token(
     client_id: &str,
     refresh_token: &str,
 ) -> Result<Option<TwitchTokenBundle>> {
-    Ok(barbed::native::refresh_access_token(http, client_id, refresh_token)
-        .await?
-        .map(TwitchTokenBundle::from_barbed))
+    Ok(
+        barbed::native::refresh_access_token(http, client_id, refresh_token)
+            .await?
+            .map(TwitchTokenBundle::from_barbed),
+    )
 }

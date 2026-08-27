@@ -23,23 +23,22 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use super::action::{AppAction, ShortcutAction, UiAction, UiEvent};
 use super::state::{self, AppState, MessageEntry, Tab};
-use crate::runtime::bridge::{
+use lupo_runtime::bridge::{
     ActionResult, RuntimeBridge, RuntimeError, RuntimeErrorKind, RuntimeEvent, RuntimeIssue,
 };
-use crate::runtime::pipeline::{
-    MessagePipeline, PipelineControlEvent, PipelineEvent, PipelinePlaybackState,
+use lupo_runtime::pipeline::{
+    MessagePipeline, OPENAI_SECRET_KEY, PipelineControlEvent, PipelineEvent, PipelinePlaybackState,
     RuntimeTtsProviderStatus,
 };
-use crate::runtime::twitch::{
+use lupo_runtime::twitch::{
     TwitchConnectorConfig, TwitchConnectorContext, TwitchEvent, TwitchStatus,
 };
-use crate::runtime::youtube::{
-    YouTubeConnectorConfig, YouTubeConnectorContext, YouTubeEvent, YouTubeStatus,
+use lupo_runtime::youtube::{
+    YOUTUBE_API_KEY_SECRET_KEY, YouTubeConnectorConfig, YouTubeConnectorContext, YouTubeEvent,
+    YouTubeStatus,
 };
-use crate::runtime::{AppServices, logging, twitch, youtube};
+use lupo_runtime::{AppServices, logging, twitch, youtube};
 
-const OPENAI_SECRET_KEY: &str = "secret_openai_api_key";
-const YOUTUBE_API_KEY_SECRET_KEY: &str = "secret_youtube_api_key";
 const MAX_RUNTIME_EVENTS_PER_POLL: usize = 128;
 
 pub struct AppModel {
@@ -366,6 +365,9 @@ impl AppModel {
                 PipelineEvent::ProviderStatusesChanged(statuses) => {
                     self.handle_provider_statuses_changed(statuses)
                 }
+                // The desktop volume UI is driven by the `audio_output`
+                // setting; the broadcast exists for the thin (dock) UIs.
+                PipelineEvent::VolumeChanged(_) => {}
                 PipelineEvent::Cleared => self.handle_queue_cleared(),
             },
             RuntimeEvent::Twitch(event) => self.handle_twitch_event(event),
@@ -379,7 +381,7 @@ impl AppModel {
 
     fn load_initial_messages(&mut self) {
         let mut snapshots = self.services.pipeline().snapshots_blocking();
-        snapshots.sort_by(|a, b| a.header.id.cmp(&b.header.id));
+        snapshots.sort_by_key(|snapshot| snapshot.header.id);
         self.state.messages = snapshots
             .into_iter()
             .map(|snapshot| {
@@ -1396,15 +1398,8 @@ impl AppModel {
     }
 
     fn twitch_connector_config(&self) -> TwitchConnectorConfig {
-        let override_login = self
-            .services
-            .settings()
-            .get("connections")
-            .ok()
-            .and_then(|record| parse_connections_channel_override(&record.value));
-
         TwitchConnectorConfig {
-            channel_login: override_login,
+            channel_login: twitch::load_channel_override(&self.services.settings()),
         }
     }
 
@@ -1425,14 +1420,14 @@ impl AppModel {
     }
 
     fn save_twitch_channel_login(&mut self) {
-        let normalized = match normalize_channel_login_input(&self.state.twitch_channel_login_draft)
-        {
-            Ok(value) => value,
-            Err(err) => {
-                self.state.settings_error = Some(err);
-                return;
-            }
-        };
+        let normalized =
+            match twitch::normalize_channel_login(&self.state.twitch_channel_login_draft) {
+                Ok(value) => value,
+                Err(err) => {
+                    self.state.settings_error = Some(err);
+                    return;
+                }
+            };
 
         if let Err(err) = self.set_connections_channel_override(normalized.clone()) {
             self.state.settings_error = Some(err);
@@ -1469,7 +1464,8 @@ impl AppModel {
         &self,
         channel_login: Option<String>,
     ) -> Result<(), String> {
-        self.set_connections_string_field("twitch_channel_login", channel_login)
+        twitch::store_channel_override(&self.services.settings(), channel_login.as_deref())
+            .map_err(|err| format!("Failed to save connections setting: {err}"))
     }
 
     fn handle_youtube_live_chat_id_draft_changed(&mut self, draft: String) {
@@ -1800,12 +1796,17 @@ fn bootstrap_services() -> AppServices {
     let runtime = Arc::new(Runtime::new().expect("failed to create tokio runtime"));
     let db = open_database_for_services(runtime.clone(), dirs.data_local_dir().to_path_buf())
         .expect("failed to initialize database");
-    let audio =
-        Arc::new(lupo_audio::Audio::start_default().expect("failed to initialize audio output"));
+    let audio = Arc::new(
+        lupo_audio::DeviceSink::start_default().expect("failed to initialize audio output"),
+    );
     let settings = SettingsService::new(db.clone());
 
-    let pipeline =
-        MessagePipeline::start(runtime.clone(), db.clone(), audio.clone(), settings.clone());
+    let pipeline = MessagePipeline::start(
+        runtime.handle().clone(),
+        db.clone(),
+        audio.clone(),
+        settings.clone(),
+    );
 
     AppServices::new(runtime, settings, pipeline, log_guard)
 }
@@ -1864,7 +1865,8 @@ fn spawn_twitch_listener(
         pipeline: services.pipeline(),
     };
 
-    let connector = twitch::spawn_listener(services.runtime(), context, tx, config);
+    let connector =
+        twitch::spawn_listener(services.runtime().handle().clone(), context, tx, config);
 
     let runtime = services.runtime();
     let forwarder = runtime.spawn(async move {
@@ -1890,7 +1892,8 @@ fn spawn_youtube_listener(
         pipeline: services.pipeline(),
     };
 
-    let connector = youtube::spawn_listener(services.runtime(), context, tx, config);
+    let connector =
+        youtube::spawn_listener(services.runtime().handle().clone(), context, tx, config);
 
     let runtime = services.runtime();
     let forwarder = runtime.spawn(async move {
@@ -1902,16 +1905,6 @@ fn spawn_youtube_listener(
     YouTubeListenerTasks {
         connector,
         forwarder,
-    }
-}
-
-fn parse_connections_channel_override(value: &Value) -> Option<String> {
-    let login = value.get("twitch_channel_login")?.as_str()?;
-    let trimmed = login.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.to_ascii_lowercase())
     }
 }
 
@@ -1941,28 +1934,12 @@ fn normalize_youtube_live_chat_id_input(raw: &str) -> Result<Option<String>, Str
     Ok(Some(trimmed.to_string()))
 }
 
-fn normalize_channel_login_input(raw: &str) -> Result<Option<String>, String> {
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        return Ok(None);
-    }
-    if !trimmed
-        .chars()
-        .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
-    {
-        return Err(
-            "Twitch channel login may only contain letters, numbers, and underscore.".to_string(),
-        );
-    }
-    Ok(Some(trimmed.to_ascii_lowercase()))
-}
-
 fn current_twitch_channel_override(entries: &[state::SettingDisplay]) -> Option<String> {
     entries
         .iter()
         .find(|entry| entry.key == "connections")
         .and_then(|entry| serde_json::from_str::<Value>(&entry.value_json).ok())
-        .and_then(|value| parse_connections_channel_override(&value))
+        .and_then(|value| twitch::parse_channel_override(&value))
 }
 
 fn current_youtube_live_chat_id(entries: &[state::SettingDisplay]) -> Option<String> {

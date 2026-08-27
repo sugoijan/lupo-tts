@@ -31,6 +31,30 @@ enum Commands {
     /// Build and run a workspace binary with the macOS TTS helper present in target dir.
     #[command(name = "dev-run")]
     DevRun(DevRunArgs),
+    /// Regenerate obs-sys bindings from vendor/obs-studio for the host target.
+    #[command(name = "obs-bindgen")]
+    ObsBindgen,
+    /// Build the OBS plugin and package it as a macOS .plugin bundle.
+    #[command(name = "bundle-obs")]
+    BundleObs(BundleObsArgs),
+    /// Build the Dioxus dock UI to wasm and run wasm-bindgen over it.
+    #[command(name = "build-dock-ui")]
+    BuildDockUi,
+}
+
+#[derive(Args)]
+struct BundleObsArgs {
+    /// Build with the `obs-release` profile (release + panic=unwind) instead of dev.
+    #[arg(long)]
+    release: bool,
+
+    /// Skip rebuilding the plugin before bundling.
+    #[arg(long)]
+    skip_build: bool,
+
+    /// Copy the bundle into the user's OBS plugins directory, replacing any previous copy.
+    #[arg(long)]
+    install: bool,
 }
 
 #[derive(Args)]
@@ -54,7 +78,7 @@ struct BundleMacosArgs {
 
 #[derive(Args)]
 struct DevBuildArgs {
-    /// Binary name to build (e.g. lupo, lupo2, lupo-cli).
+    /// Binary name to build (e.g. lupo, lupo-cli).
     #[arg(long, default_value = "lupo")]
     bin: String,
 
@@ -65,7 +89,7 @@ struct DevBuildArgs {
 
 #[derive(Args)]
 struct DevRunArgs {
-    /// Binary name to run (e.g. lupo, lupo2, lupo-cli).
+    /// Binary name to run (e.g. lupo, lupo-cli).
     #[arg(long, default_value = "lupo")]
     bin: String,
 
@@ -85,7 +109,273 @@ fn main() -> Result<()> {
         Commands::BundleMacos(args) => bundle_macos(args),
         Commands::DevBuild(args) => dev_build(args),
         Commands::DevRun(args) => dev_run(args),
+        Commands::ObsBindgen => obs_bindgen(),
+        Commands::BundleObs(args) => bundle_obs(args),
+        Commands::BuildDockUi => build_dock_ui().map(|_| ()),
     }
+}
+
+fn repo_root() -> Result<PathBuf> {
+    Ok(PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .context("xtask manifest dir has no parent")?
+        .to_path_buf())
+}
+
+/// Target triple of the machine running xtask; bindings are committed per triple.
+fn host_triple() -> Result<&'static str> {
+    match (std::env::consts::OS, std::env::consts::ARCH) {
+        ("macos", "aarch64") => Ok("aarch64-apple-darwin"),
+        ("macos", "x86_64") => Ok("x86_64-apple-darwin"),
+        ("windows", "x86_64") => Ok("x86_64-pc-windows-msvc"),
+        ("linux", "x86_64") => Ok("x86_64-unknown-linux-gnu"),
+        (os, arch) => anyhow::bail!("unsupported host {os}/{arch} for obs-bindgen"),
+    }
+}
+
+const OBS_PLUGIN_MODULE: &str = "lupo";
+const OBS_PLUGIN_PACKAGE: &str = "lupo-obs";
+const OBS_PLUGIN_DYLIB: &str = "liblupo_obs.dylib";
+
+fn obs_bindgen() -> Result<()> {
+    let repo_root = repo_root()?;
+    let libobs_dir = repo_root.join("vendor/obs-studio/libobs");
+    if !libobs_dir.join("obs-module.h").exists() {
+        anyhow::bail!(
+            "{} is missing; run `git submodule update --init vendor/obs-studio`",
+            libobs_dir.display()
+        );
+    }
+    let triple = host_triple()?;
+    let wrapper = repo_root.join("obs-sys/wrapper.h");
+    let out_path = repo_root
+        .join("obs-sys/src/bindings")
+        .join(format!("{triple}.rs"));
+
+    let mut builder = bindgen::Builder::default()
+        .header(wrapper.to_string_lossy())
+        .clang_arg(format!("-I{}", libobs_dir.display()))
+        .clang_arg(format!("-I{}", repo_root.join("vendor/obs-studio/UI/obs-frontend-api").display()))
+        .clang_arg(format!("--target={triple}"))
+        .rust_target(bindgen::RustTarget::stable(85, 0).map_err(|e| anyhow::anyhow!("{e}"))?)
+        .rust_edition(bindgen::RustEdition::Edition2024)
+        // libobs API surface.
+        .allowlist_function("obs_.*|blog|blogva|bmalloc|bzalloc|bfree|bstrdup|os_get_config_path.*|os_gettime_ns|os_sleepto_ns|os_sleep_ms|signal_handler_.*|calldata_.*|obs_frontend_.*")
+        .allowlist_type("obs_.*|audio_.*|video_.*|speaker_layout|media_frames_per_second|gs_.*|vec2|vec3|vec4")
+        .allowlist_var("OBS_.*|LIBOBS_.*|LOG_.*|MAX_AUDIO_.*|MAX_AV_PLANES|AUDIO_OUTPUT_.*")
+        // Exported *by* the module, not by libobs; the plugin crate defines them.
+        .blocklist_function(
+            "obs_module_(load|unload|post_load|ver|set_pointer|name|description|set_locale|free_locale|get_string)|obs_current_module",
+        )
+        .prepend_enum_name(false)
+        .derive_default(true)
+        .derive_debug(true)
+        .generate_comments(false)
+        .layout_tests(true)
+        .sort_semantically(true)
+        .merge_extern_blocks(true);
+
+    if cfg!(target_os = "macos") {
+        let sdk = Command::new("xcrun")
+            .args(["--show-sdk-path"])
+            .output()
+            .context("xcrun --show-sdk-path failed; install Xcode command line tools")?;
+        let sdk = String::from_utf8_lossy(&sdk.stdout).trim().to_string();
+        builder = builder.clang_arg(format!("-isysroot{sdk}"));
+    }
+
+    let bindings = builder
+        .generate()
+        .map_err(|e| anyhow::anyhow!("bindgen failed: {e}"))?;
+
+    fs::create_dir_all(out_path.parent().unwrap())?;
+    let mut file = fs::File::create(&out_path)
+        .with_context(|| format!("failed to create {}", out_path.display()))?;
+    writeln!(
+        file,
+        "// SPDX-License-Identifier: Apache-2.0\n// Generated by `cargo xtask obs-bindgen` from vendor/obs-studio for {triple}. Do not edit."
+    )?;
+    bindings
+        .write(Box::new(file))
+        .context("failed to write bindings")?;
+    println!("Wrote {}", out_path.display());
+    Ok(())
+}
+
+/// Compile `lupo-dock-ui` for wasm and emit the wasm-bindgen output (plus
+/// `index.html`) into `target/dock-ui/`. Returns that directory.
+fn build_dock_ui() -> Result<PathBuf> {
+    let repo_root = repo_root()?;
+    let mut build_cmd = Command::new("cargo");
+    build_cmd.args([
+        "build",
+        "-p",
+        "lupo-dock-ui",
+        "--target",
+        "wasm32-unknown-unknown",
+        "--release",
+    ]);
+    run(build_cmd.current_dir(&repo_root)).context("failed to build the dock UI for wasm")?;
+
+    let wasm = repo_root.join("target/wasm32-unknown-unknown/release/lupo-dock-ui.wasm");
+    if !wasm.exists() {
+        anyhow::bail!("wasm artifact not found at {}", wasm.display());
+    }
+    let out_dir = repo_root.join("target/dock-ui");
+    let _ = fs::remove_dir_all(&out_dir);
+    fs::create_dir_all(&out_dir)?;
+
+    let mut bindgen = wasm_bindgen_cli_support::Bindgen::new();
+    bindgen
+        .input_path(&wasm)
+        .web(true)
+        .map_err(|err| anyhow::anyhow!("wasm-bindgen: {err}"))?
+        .out_name("dock_ui")
+        .typescript(false)
+        .remove_name_section(true)
+        .remove_producers_section(true);
+    bindgen
+        .generate(&out_dir)
+        .map_err(|err| anyhow::anyhow!("wasm-bindgen: {err}"))?;
+    fs::copy(
+        repo_root.join("dock-ui/index.html"),
+        out_dir.join("index.html"),
+    )?;
+    println!("Dock UI written to {}", out_dir.display());
+    Ok(out_dir)
+}
+
+fn copy_dir_recursive(from: &Path, to: &Path) -> Result<()> {
+    fs::create_dir_all(to)?;
+    for entry in fs::read_dir(from)? {
+        let entry = entry?;
+        let dest = to.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_dir_recursive(&entry.path(), &dest)?;
+        } else {
+            fs::copy(entry.path(), &dest)?;
+        }
+    }
+    Ok(())
+}
+
+fn bundle_obs(args: BundleObsArgs) -> Result<()> {
+    if !cfg!(target_os = "macos") {
+        anyhow::bail!("bundle-obs currently only produces macOS .plugin bundles");
+    }
+    let repo_root = repo_root()?;
+    let profile_dir = if args.release { "obs-release" } else { "debug" };
+
+    if !args.skip_build {
+        let mut build_cmd = Command::new("cargo");
+        build_cmd.args(["build", "-p", OBS_PLUGIN_PACKAGE]);
+        if args.release {
+            build_cmd.args(["--profile", "obs-release"]);
+        }
+        run(build_cmd.current_dir(&repo_root)).context("failed to build the OBS plugin")?;
+
+        let mut helper_cmd = Command::new("cargo");
+        helper_cmd.args([
+            "build",
+            "-p",
+            "lupo-tts-macos",
+            "--bin",
+            MACOS_TTS_HELPER_BINARY,
+        ]);
+        if args.release {
+            helper_cmd.args(["--profile", "obs-release"]);
+        }
+        run(helper_cmd.current_dir(&repo_root)).context("failed to build the macOS TTS helper")?;
+    }
+
+    let ui_dir = build_dock_ui()?;
+
+    let target_dir = repo_root.join("target").join(profile_dir);
+    let dylib = target_dir.join(OBS_PLUGIN_DYLIB);
+    if !dylib.exists() {
+        anyhow::bail!("plugin dylib not found at {}", dylib.display());
+    }
+    let helper = target_dir.join(MACOS_TTS_HELPER_BINARY);
+    if !helper.exists() {
+        anyhow::bail!("helper binary not found at {}", helper.display());
+    }
+
+    let version = workspace_version(&repo_root).unwrap_or_else(|_| "0.0.0".to_string());
+    // OBS resolves `<dir>/<name>.plugin/Contents/MacOS/<name>`, so the executable
+    // must carry the bundle's base name.
+    let bundle_dir = target_dir
+        .join("bundle/obs")
+        .join(format!("{OBS_PLUGIN_MODULE}.plugin"));
+    let contents_dir = bundle_dir.join("Contents");
+    let macos_dir = contents_dir.join("MacOS");
+    let resources_dir = contents_dir.join("Resources");
+    if bundle_dir.exists() {
+        fs::remove_dir_all(&bundle_dir).context("failed to remove existing plugin bundle")?;
+    }
+    fs::create_dir_all(&macos_dir)?;
+    fs::create_dir_all(&resources_dir)?;
+    let module_path = macos_dir.join(OBS_PLUGIN_MODULE);
+    fs::copy(&dylib, &module_path)
+        .with_context(|| format!("failed to copy {}", dylib.display()))?;
+    // The plugin looks for the system-voice helper next to its own binary.
+    let helper_path = macos_dir.join(MACOS_TTS_HELPER_BINARY);
+    fs::copy(&helper, &helper_path)
+        .with_context(|| format!("failed to copy {}", helper.display()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        for path in [&module_path, &helper_path] {
+            let mut perms = fs::metadata(path)?.permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(path, perms)?;
+        }
+    }
+
+    // The dock UI is served from the module data path (Contents/Resources).
+    copy_dir_recursive(&ui_dir, &resources_dir.join("dock-ui"))?;
+
+    let mut plist = fs::File::create(contents_dir.join("Info.plist"))?;
+    write_plist(
+        &mut plist,
+        &PlistSpec {
+            bundle_name: OBS_PLUGIN_MODULE,
+            display_name: "LUPO TTS",
+            binary_name: OBS_PLUGIN_MODULE,
+            identifier: "dev.sugoijan.lupo.obs",
+            version: &version,
+            package_type: "BNDL",
+            min_system_version: "11.0",
+            extra_keys: "  <key>CFBundleInfoDictionaryVersion</key>\n  \
+                         <string>6.0</string>\n  \
+                         <key>CFBundleSupportedPlatforms</key>\n  \
+                         <array>\n    <string>MacOSX</string>\n  </array>\n",
+        },
+    )?;
+
+    // OBS.app disables library validation, so an ad-hoc signature is enough for
+    // a local build to load.
+    let mut sign = Command::new("codesign");
+    sign.args(["--force", "--sign", "-", "--deep"])
+        .arg(&bundle_dir);
+    run(&mut sign).context("codesign failed")?;
+
+    println!("Plugin bundle created at {}", bundle_dir.display());
+
+    if args.install {
+        let home = std::env::var_os("HOME").context("HOME is not set")?;
+        let plugins_dir =
+            PathBuf::from(home).join("Library/Application Support/obs-studio/plugins");
+        fs::create_dir_all(&plugins_dir)?;
+        let dest = plugins_dir.join(format!("{OBS_PLUGIN_MODULE}.plugin"));
+        if dest.exists() {
+            fs::remove_dir_all(&dest)
+                .with_context(|| format!("failed to remove {}", dest.display()))?;
+        }
+        copy_dir_recursive(&bundle_dir, &dest)
+            .context("failed to copy bundle into the OBS plugins directory")?;
+        println!("Installed to {}", dest.display());
+    }
+    Ok(())
 }
 
 fn dev_build(args: DevBuildArgs) -> Result<()> {
@@ -210,13 +500,27 @@ fn bundle_macos(args: BundleMacosArgs) -> Result<()> {
     }
 
     let mut plist = fs::File::create(contents_dir.join("Info.plist"))?;
+    let mut extra_keys = String::from(
+        "  <key>NSHighResolutionCapable</key>\n  \
+         <true/>\n  \
+         <key>LSApplicationCategoryType</key>\n  \
+         <string>public.app-category.utilities</string>\n",
+    );
+    if icon_exists {
+        extra_keys.push_str("  <key>CFBundleIconFile</key>\n  <string>Icon</string>\n");
+    }
     write_plist(
         &mut plist,
-        &display_name,
-        &binary_name,
-        &bundle_identifier,
-        &version,
-        icon_exists,
+        &PlistSpec {
+            bundle_name: &display_name,
+            display_name: &display_name,
+            binary_name: &binary_name,
+            identifier: &bundle_identifier,
+            version: &version,
+            package_type: "APPL",
+            min_system_version: "10.15",
+            extra_keys: &extra_keys,
+        },
     )?;
 
     println!("Bundle created at {}", bundle_dir.display());
@@ -298,7 +602,6 @@ fn default_display_name(binary: &str) -> String {
 fn package_for_binary(binary: &str) -> Option<&'static str> {
     match binary {
         "lupo" => Some("lupo-app"),
-        "lupo2" => Some("lupo-app2"),
         "lupo-cli" => Some("lupo-cli"),
         _ => None,
     }
@@ -348,14 +651,20 @@ fn build_binary_with_helper(repo_root: &Path, binary_name: &str, release: bool) 
     Ok(())
 }
 
-fn write_plist(
-    file: &mut fs::File,
-    display_name: &str,
-    binary_name: &str,
-    bundle_identifier: &str,
-    version: &str,
-    has_icon: bool,
-) -> Result<()> {
+struct PlistSpec<'a> {
+    bundle_name: &'a str,
+    display_name: &'a str,
+    binary_name: &'a str,
+    identifier: &'a str,
+    version: &'a str,
+    /// "APPL" for apps, "BNDL" for plugins.
+    package_type: &'a str,
+    min_system_version: &'a str,
+    /// Extra pre-formatted (and pre-escaped) XML lines inside the dict.
+    extra_keys: &'a str,
+}
+
+fn write_plist(file: &mut fs::File, spec: &PlistSpec) -> Result<()> {
     writeln!(
         file,
         r#"<?xml version="1.0" encoding="UTF-8"?>
@@ -363,7 +672,7 @@ fn write_plist(
 <plist version="1.0">
 <dict>
   <key>CFBundleName</key>
-  <string>{display}</string>
+  <string>{name}</string>
   <key>CFBundleDisplayName</key>
   <string>{display}</string>
   <key>CFBundleExecutable</key>
@@ -375,30 +684,20 @@ fn write_plist(
   <key>CFBundleShortVersionString</key>
   <string>{version}</string>
   <key>CFBundlePackageType</key>
-  <string>APPL</string>
+  <string>{package_type}</string>
   <key>LSMinimumSystemVersion</key>
-  <string>10.15</string>
-  <key>NSHighResolutionCapable</key>
-  <true/>
-  <key>LSApplicationCategoryType</key>
-  <string>public.app-category.utilities</string>
-"#,
-        display = xml_escape(display_name),
-        binary = xml_escape(binary_name),
-        identifier = xml_escape(bundle_identifier),
-        version = xml_escape(version),
+  <string>{min_system}</string>
+{extra}</dict>
+</plist>"#,
+        name = xml_escape(spec.bundle_name),
+        display = xml_escape(spec.display_name),
+        binary = xml_escape(spec.binary_name),
+        identifier = xml_escape(spec.identifier),
+        version = xml_escape(spec.version),
+        package_type = spec.package_type,
+        min_system = spec.min_system_version,
+        extra = spec.extra_keys,
     )?;
-
-    if has_icon {
-        writeln!(
-            file,
-            r#"  <key>CFBundleIconFile</key>
-  <string>Icon</string>
-"#
-        )?;
-    }
-
-    writeln!(file, "</dict>\n</plist>")?;
     Ok(())
 }
 

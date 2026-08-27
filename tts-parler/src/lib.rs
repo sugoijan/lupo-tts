@@ -3,8 +3,9 @@ mod model;
 use anyhow::{Context, Result, anyhow};
 use candle_core::{DType, Device};
 use candle_nn::VarBuilder;
-use hf_hub::api::sync::ApiBuilder;
-use hf_hub::{Repo, RepoType};
+use hf_hub::progress::{DownloadEvent, ProgressEvent, ProgressHandler};
+use hf_hub::repository::RepoTypeModel;
+use hf_hub::{HFClientBuilder, HFRepositorySync, split_id};
 use model::TtsModel;
 use serde_json::Value;
 use std::collections::HashSet;
@@ -127,56 +128,94 @@ struct ModelAssets {
     weights: Vec<PathBuf>,
 }
 
-fn download_assets(repo: &str, revision: Option<&str>, token: Option<&str>) -> Result<ModelAssets> {
-    let mut api_builder = ApiBuilder::new().with_progress(true);
-    if let Some(token) = token {
-        api_builder = api_builder.with_token(Some(token.to_owned()));
+/// Logs Hugging Face download lifecycle events through `tracing`.
+struct TracingProgress;
+
+impl ProgressHandler for TracingProgress {
+    fn on_progress(&self, event: &ProgressEvent) {
+        match event {
+            ProgressEvent::Download(DownloadEvent::Start {
+                total_files,
+                total_bytes,
+            }) => {
+                tracing::info!(total_files, total_bytes, "downloading Hugging Face assets");
+            }
+            ProgressEvent::Download(DownloadEvent::Complete) => {
+                tracing::info!("Hugging Face download complete");
+            }
+            _ => {}
+        }
     }
-    let api = api_builder.build()?;
-    let repo = if let Some(revision) = revision {
-        Repo::with_revision(repo.to_string(), RepoType::Model, revision.to_string())
-    } else {
-        Repo::new(repo.to_string(), RepoType::Model)
+}
+
+struct RepoHandle {
+    repo: HFRepositorySync<RepoTypeModel>,
+    revision: Option<String>,
+}
+
+impl RepoHandle {
+    fn fetch(&self, filename: &str) -> Result<PathBuf> {
+        self.repo
+            .download_file()
+            .filename(filename)
+            .maybe_revision(self.revision.clone())
+            .progress(TracingProgress)
+            .send()
+            .with_context(|| format!("failed to fetch {filename} from huggingface"))
+    }
+}
+
+fn download_assets(repo: &str, revision: Option<&str>, token: Option<&str>) -> Result<ModelAssets> {
+    let mut client_builder = HFClientBuilder::new();
+    if let Some(token) = token {
+        client_builder = client_builder.token(token);
+    }
+    let client = client_builder
+        .build_sync()
+        .context("failed to build Hugging Face client")?;
+    let (owner, name) = split_id(repo);
+    let repo_handle = RepoHandle {
+        repo: client.model(owner, name),
+        revision: revision.map(str::to_owned),
     };
-    let repo_handle = api.repo(repo);
 
     let info = repo_handle
+        .repo
         .info()
+        .maybe_revision(repo_handle.revision.clone())
+        .send()
         .context("failed to fetch Hugging Face repository metadata")?;
-    let available_files: Vec<String> = info.siblings.into_iter().map(|s| s.rfilename).collect();
+    let available_files: Vec<String> = info
+        .siblings
+        .unwrap_or_default()
+        .into_iter()
+        .map(|s| s.rfilename)
+        .collect();
 
     let tokenizer_name = find_tokenizer_file(&available_files).ok_or_else(|| {
         anyhow!(
             "tokenizer.json not found in repository. Available files: {}",
-            available_files.join(", ")
+            describe_files(&available_files)
         )
     })?;
-    let tokenizer = repo_handle
-        .get(&tokenizer_name)
-        .with_context(|| format!("failed to fetch {tokenizer_name} from huggingface"))?;
+    let tokenizer = repo_handle.fetch(&tokenizer_name)?;
 
     let config_name = find_config_file(&available_files).ok_or_else(|| {
         anyhow!(
             "config.json not found in repository. Available files: {}",
-            available_files.join(", ")
+            describe_files(&available_files)
         )
     })?;
-    let config = repo_handle
-        .get(&config_name)
-        .with_context(|| format!("failed to fetch {config_name} from huggingface"))?;
+    let config = repo_handle.fetch(&config_name)?;
 
     let weights = if let Some(index) = find_index_file(&available_files) {
         download_indexed_weights(&repo_handle, &index)?
     } else if let Some(weight_file) = find_weight_file(&available_files) {
-        vec![
-            repo_handle
-                .get(&weight_file)
-                .with_context(|| format!("failed to fetch {weight_file} from huggingface"))?,
-        ]
+        vec![repo_handle.fetch(&weight_file)?]
     } else {
         return Err(anyhow!(
             "model.safetensors not found in repository. Available files: {}",
-            available_files.join(", ")
+            describe_files(&available_files)
         ));
     };
 
@@ -185,6 +224,16 @@ fn download_assets(repo: &str, revision: Option<&str>, token: Option<&str>) -> R
         config,
         weights,
     })
+}
+
+/// The Hub API may omit the file listing entirely (`siblings: null`); say so
+/// instead of printing a blank list that reads like an empty repository.
+fn describe_files(files: &[String]) -> String {
+    if files.is_empty() {
+        "(the repository file listing was empty or unavailable)".to_string()
+    } else {
+        files.join(", ")
+    }
 }
 
 fn find_tokenizer_file(files: &[String]) -> Option<String> {
@@ -237,13 +286,8 @@ fn pick_file(files: &[String], filename: &str) -> Option<String> {
         })
 }
 
-fn download_indexed_weights(
-    repo_handle: &hf_hub::api::sync::ApiRepo,
-    index: &str,
-) -> Result<Vec<PathBuf>> {
-    let index_path = repo_handle
-        .get(index)
-        .with_context(|| format!("failed to fetch {index} from huggingface"))?;
+fn download_indexed_weights(repo_handle: &RepoHandle, index: &str) -> Result<Vec<PathBuf>> {
+    let index_path = repo_handle.fetch(index)?;
     let file = File::open(&index_path)
         .with_context(|| format!("failed to open {}", index_path.display()))?;
     let index_json: Value =
@@ -265,10 +309,7 @@ fn download_indexed_weights(
     }
     let mut result = Vec::new();
     for shard in shards {
-        let path = repo_handle
-            .get(&shard)
-            .with_context(|| format!("failed to fetch {shard} from huggingface"))?;
-        result.push(path);
+        result.push(repo_handle.fetch(&shard)?);
     }
     Ok(result)
 }

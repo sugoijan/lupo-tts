@@ -42,14 +42,11 @@ Current desktop shells:
 
 - `cargo run -p lupo-app` runs the default Dioxus shell (`lupo`, webview renderer default).
 - `cargo run -p lupo-app --no-default-features --features renderer-native` runs the native-feature variant (`lupo`).
-- `cargo run -p lupo-app2` runs the Iced experimental shell (`lupo2`, backburner track).
 
 Bundle commands:
 
 - `cargo xtask bundle --app lupo`
-- `cargo xtask bundle --app lupo2`
 
 Framework references:
 
-- [Iced docs](https://docs.rs/iced/latest/iced/)
 - [Dioxus docs](https://docs.rs/dioxus/latest/dioxus/)

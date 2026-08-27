@@ -1,0 +1,72 @@
+# Builds the macOS .app bundle with `cargo xtask bundle` and attaches it to a
+# draft GitHub release. Triggered on version tags (v*.*.*) or manually.
+#
+# Note: `.cargo/config.toml` builds with `-C target-cpu=native`, but CI
+# overrides it (empty RUSTFLAGS below) so the bundle targets baseline
+# aarch64-apple-darwin instead of the runner's CPU — native tuning is wrong for
+# distributed binaries and breaks `ring`'s feature asserts on the virtualized
+# runners, where LLVM cannot identify the host CPU.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version label for the release (e.g. v0.1.0)
+        required: true
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  VERSION: ${{ github.event.inputs.version || github.ref_name }}
+  RUSTFLAGS: '' # see note above
+
+jobs:
+  bundle-macos:
+    name: Bundle macOS (Apple Silicon)
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true # one level: vendor/obs-studio has its own submodules we do not need
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build .app bundle
+        run: cargo xtask bundle --app lupo
+
+      - name: Ad-hoc codesign
+        run: codesign -s - --deep --force target/release/bundle/macos/Lupo.app
+
+      - name: Zip bundle
+        run: |
+          mkdir -p dist
+          ditto -c -k --keepParent target/release/bundle/macos/Lupo.app "dist/Lupo-macos-arm64-${VERSION}.zip"
+
+      - name: Upload bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Lupo-macos-arm64-${{ env.VERSION }}
+          path: dist/*.zip
+
+      - name: Create draft release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Release ${{ env.VERSION }}
+          draft: true
+          prerelease: true
+          files: dist/*.zip

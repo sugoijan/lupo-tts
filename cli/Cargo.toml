@@ -8,7 +8,7 @@ rust-version.workspace = true
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
-lupo-audio.workspace = true
+lupo-audio = { workspace = true, features = ["device"] }
 lupo-tts-openai.workspace = true
 lupo-tts-parler.workspace = true
 lupo-configuration.workspace = true
@@ -29,6 +29,7 @@ tracing-subscriber.workspace = true
 webbrowser.workspace = true
 tokio-tungstenite.workspace = true
 futures-util.workspace = true
+rustls.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
 lupo-tts-macos.workspace = true

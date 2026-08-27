@@ -713,7 +713,7 @@ pub fn list_messages_desc(db: &DatabaseHandle) -> Result<Vec<MessageSnapshot>, E
         let snapshot = decode_snapshot(id, bytes)?;
         snapshots.push(snapshot);
     }
-    snapshots.sort_by(|a, b| b.header.id.cmp(&a.header.id));
+    snapshots.sort_by_key(|snapshot| std::cmp::Reverse(snapshot.header.id));
     Ok(snapshots)
 }
 

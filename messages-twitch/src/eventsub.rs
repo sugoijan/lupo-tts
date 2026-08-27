@@ -357,7 +357,13 @@ mod tests {
         assert_eq!(message.badges.len(), 1);
         assert_eq!(message.body.raw_text, "Kappa hi");
         assert_eq!(message.body.segments.len(), 2);
-        assert!(matches!(message.body.segments[0], MessageSegment::Emote { .. }));
-        assert!(matches!(message.body.segments[1], MessageSegment::Text { .. }));
+        assert!(matches!(
+            message.body.segments[0],
+            MessageSegment::Emote { .. }
+        ));
+        assert!(matches!(
+            message.body.segments[1],
+            MessageSegment::Text { .. }
+        ));
     }
 }
