@@ -464,6 +464,32 @@ pub struct SettingRecord {
     pub source: SettingSource,
 }
 
+impl SettingRecord {
+    fn from_schema(schema: &SettingSchema, stored: Option<StoredSetting>) -> Self {
+        let (value, source) = match stored {
+            Some(stored) => (
+                stored.value,
+                SettingSource::Persisted {
+                    scope: stored.scope,
+                    updated_at: stored.updated_at,
+                },
+            ),
+            None => ((schema.default_value)(), SettingSource::Default),
+        };
+
+        Self {
+            key: schema.key.to_string(),
+            title: schema.title.to_string(),
+            description: schema.description.to_string(),
+            domain: schema.domain,
+            risk: schema.risk,
+            value_kind: schema.value_kind,
+            value,
+            source,
+        }
+    }
+}
+
 /// Stored settings that currently lack a schema entry.
 #[derive(Clone, Debug, Serialize)]
 pub struct OrphanRecord {
@@ -587,32 +613,7 @@ impl SettingsService {
         let mut entries = Vec::with_capacity(SETTINGS_REGISTRY.len());
 
         for schema in SETTINGS_REGISTRY.iter() {
-            if let Some(stored) = map.remove(schema.key) {
-                entries.push(SettingRecord {
-                    key: schema.key.to_string(),
-                    title: schema.title.to_string(),
-                    description: schema.description.to_string(),
-                    domain: schema.domain,
-                    risk: schema.risk,
-                    value_kind: schema.value_kind,
-                    value: stored.value,
-                    source: SettingSource::Persisted {
-                        scope: stored.scope,
-                        updated_at: stored.updated_at,
-                    },
-                });
-            } else {
-                entries.push(SettingRecord {
-                    key: schema.key.to_string(),
-                    title: schema.title.to_string(),
-                    description: schema.description.to_string(),
-                    domain: schema.domain,
-                    risk: schema.risk,
-                    value_kind: schema.value_kind,
-                    value: (schema.default_value)(),
-                    source: SettingSource::Default,
-                });
-            }
+            entries.push(SettingRecord::from_schema(schema, map.remove(schema.key)));
         }
 
         if !map.is_empty() {
@@ -641,32 +642,7 @@ impl SettingsService {
             return Err(Error::UnknownSetting(key.to_string()));
         };
 
-        if let Some(stored) = self.load_one(key)? {
-            Ok(SettingRecord {
-                key: schema.key.to_string(),
-                title: schema.title.to_string(),
-                description: schema.description.to_string(),
-                domain: schema.domain,
-                risk: schema.risk,
-                value_kind: schema.value_kind,
-                value: stored.value,
-                source: SettingSource::Persisted {
-                    scope: stored.scope,
-                    updated_at: stored.updated_at,
-                },
-            })
-        } else {
-            Ok(SettingRecord {
-                key: schema.key.to_string(),
-                title: schema.title.to_string(),
-                description: schema.description.to_string(),
-                domain: schema.domain,
-                risk: schema.risk,
-                value_kind: schema.value_kind,
-                value: (schema.default_value)(),
-                source: SettingSource::Default,
-            })
-        }
+        Ok(SettingRecord::from_schema(schema, self.load_one(key)?))
     }
 
     /// Persist a value after schema validation.
@@ -731,7 +707,7 @@ impl SettingsService {
         let listing = self.list()?;
         let mut map = BTreeMap::new();
         for entry in listing.entries {
-            map.insert(entry.key.clone(), entry.value);
+            map.insert(entry.key, entry.value);
         }
         Ok(SettingsSnapshot::new(map))
     }
@@ -743,7 +719,7 @@ impl SettingsService {
         options: SnapshotApplyOptions,
     ) -> Result<SnapshotReport, Error> {
         let listing = self.list()?;
-        let current: HashMap<String, SettingRecord> = listing
+        let mut current: HashMap<String, SettingRecord> = listing
             .entries
             .into_iter()
             .map(|entry| (entry.key.clone(), entry))
@@ -764,8 +740,7 @@ impl SettingsService {
 
             validate_value(schema, new_value)?;
             let previous = current
-                .get(key)
-                .cloned()
+                .remove(key)
                 .expect("listing contains every schema entry");
 
             if previous.value != *new_value {
@@ -803,6 +778,28 @@ mod tests {
             .block_on(async { open_database_at_path(temp_dir.path()).await })
             .expect("failed to open test database");
         (SettingsService::new(db), temp_dir)
+    }
+
+    #[test]
+    fn list_and_get_agree_for_default_and_persisted_settings() {
+        let (service, _temp_dir) = test_service();
+
+        for persisted in [false, true] {
+            if persisted {
+                service
+                    .set("command_acceptance", json!("channel_owner"))
+                    .unwrap();
+            }
+            for listed in service.list().unwrap().entries {
+                let fetched = service.get(&listed.key).unwrap();
+                assert_eq!(
+                    serde_json::to_value(&listed).unwrap(),
+                    serde_json::to_value(&fetched).unwrap(),
+                    "{}",
+                    listed.key,
+                );
+            }
+        }
     }
 
     #[test]

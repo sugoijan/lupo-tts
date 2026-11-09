@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, anyhow};
 use messages::{
     EmoteId, EmoteImage, EmoteImageFormat, EmoteImageScale, EmoteProvider, EmoteRef, EmoteResolver,
-    EmoteThemeMode, ResolvedSegment, resolve_with_lookup,
+    EmoteThemeMode, MapEmoteResolver,
 };
 use reqwest::Client;
 use serde::Deserialize;
@@ -124,51 +124,14 @@ impl SevenTvCatalog {
         if self.global.is_empty() {
             return None;
         }
-        Some(Arc::new(SevenTvGlobalResolver::new(self.global.clone())) as Arc<dyn EmoteResolver>)
+        Some(Arc::new(MapEmoteResolver::new(self.global.clone())) as Arc<dyn EmoteResolver>)
     }
 
     pub fn channel_resolver(&self, channel_id: &str) -> Option<Arc<dyn EmoteResolver>> {
-        self.channels.get(channel_id).cloned().map(|emotes| {
-            Arc::new(SevenTvChannelResolver::new(channel_id, emotes)) as Arc<dyn EmoteResolver>
-        })
-    }
-}
-
-struct SevenTvGlobalResolver {
-    emotes: Arc<HashMap<String, Arc<EmoteRef>>>,
-}
-
-impl SevenTvGlobalResolver {
-    fn new(emotes: HashMap<String, Arc<EmoteRef>>) -> Self {
-        Self {
-            emotes: Arc::new(emotes),
-        }
-    }
-}
-
-impl EmoteResolver for SevenTvGlobalResolver {
-    fn resolve(&self, text_segment: &str) -> Vec<ResolvedSegment> {
-        resolve_with_lookup(text_segment, |token| self.emotes.get(token).cloned())
-    }
-}
-
-struct SevenTvChannelResolver {
-    _channel_id: Arc<str>,
-    emotes: Arc<HashMap<String, Arc<EmoteRef>>>,
-}
-
-impl SevenTvChannelResolver {
-    fn new(channel_id: &str, emotes: HashMap<String, Arc<EmoteRef>>) -> Self {
-        Self {
-            _channel_id: Arc::from(channel_id.to_string()),
-            emotes: Arc::new(emotes),
-        }
-    }
-}
-
-impl EmoteResolver for SevenTvChannelResolver {
-    fn resolve(&self, text_segment: &str) -> Vec<ResolvedSegment> {
-        resolve_with_lookup(text_segment, |token| self.emotes.get(token).cloned())
+        self.channels
+            .get(channel_id)
+            .cloned()
+            .map(|emotes| Arc::new(MapEmoteResolver::new(emotes)) as Arc<dyn EmoteResolver>)
     }
 }
 

@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, anyhow};
 use messages::{
     EmoteId, EmoteImage, EmoteImageFormat, EmoteImageScale, EmoteModifier, EmoteModifierFlags,
-    EmoteProvider, EmoteRef, EmoteResolver, EmoteThemeMode, ResolvedSegment, resolve_with_lookup,
+    EmoteProvider, EmoteRef, EmoteResolver, EmoteThemeMode, MapEmoteResolver,
 };
 use reqwest::Client;
 use serde::Deserialize;
@@ -228,51 +228,14 @@ impl FfzCatalog {
         if self.global.is_empty() {
             return None;
         }
-        Some(Arc::new(FfzGlobalResolver::new(self.global.clone())) as Arc<dyn EmoteResolver>)
+        Some(Arc::new(MapEmoteResolver::new(self.global.clone())) as Arc<dyn EmoteResolver>)
     }
 
     pub fn channel_resolver(&self, channel_id: &str) -> Option<Arc<dyn EmoteResolver>> {
-        self.channels.get(channel_id).cloned().map(|emotes| {
-            Arc::new(FfzChannelResolver::new(channel_id, emotes)) as Arc<dyn EmoteResolver>
-        })
-    }
-}
-
-struct FfzGlobalResolver {
-    emotes: Arc<HashMap<String, Arc<EmoteRef>>>,
-}
-
-impl FfzGlobalResolver {
-    fn new(emotes: HashMap<String, Arc<EmoteRef>>) -> Self {
-        Self {
-            emotes: Arc::new(emotes),
-        }
-    }
-}
-
-impl EmoteResolver for FfzGlobalResolver {
-    fn resolve(&self, text_segment: &str) -> Vec<ResolvedSegment> {
-        resolve_with_lookup(text_segment, |token| self.emotes.get(token).cloned())
-    }
-}
-
-struct FfzChannelResolver {
-    _channel_id: Arc<str>,
-    emotes: Arc<HashMap<String, Arc<EmoteRef>>>,
-}
-
-impl FfzChannelResolver {
-    fn new(channel_id: &str, emotes: HashMap<String, Arc<EmoteRef>>) -> Self {
-        Self {
-            _channel_id: Arc::from(channel_id.to_string()),
-            emotes: Arc::new(emotes),
-        }
-    }
-}
-
-impl EmoteResolver for FfzChannelResolver {
-    fn resolve(&self, text_segment: &str) -> Vec<ResolvedSegment> {
-        resolve_with_lookup(text_segment, |token| self.emotes.get(token).cloned())
+        self.channels
+            .get(channel_id)
+            .cloned()
+            .map(|emotes| Arc::new(MapEmoteResolver::new(emotes)) as Arc<dyn EmoteResolver>)
     }
 }
 

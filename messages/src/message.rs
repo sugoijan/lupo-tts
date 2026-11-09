@@ -202,13 +202,47 @@ impl MessageSegment {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::emote::{EmoteResolver, resolve_with_lookup};
-    use crate::{
-        EmojiResolver, EmoteId, EmoteModifier, EmoteModifierFlags, EmoteProvider, ResolvedSegment,
-    };
-    use std::collections::HashMap;
+    use crate::emote::{EmoteResolver, MapEmoteResolver};
+    use crate::{EmojiResolver, EmoteId, EmoteModifier, EmoteModifierFlags, EmoteProvider};
 
     const CHANNEL_ID: &str = "channel-1";
+
+    #[test]
+    fn catalog_resolvers_preserve_channel_precedence_and_unknown_text() {
+        let global = Arc::new(base_emote());
+        let channel = Arc::new(EmoteRef::new(
+            EmoteId::new(EmoteProvider::SevenTv, "channel-base"),
+            "Base",
+            false,
+            Vec::new(),
+        ));
+        let mut registry = ResolverRegistry::new();
+        registry.add_global(Arc::new(MapEmoteResolver::new(
+            [("Base".to_string(), global.clone())].into(),
+        )));
+        registry.add_channel(
+            CHANNEL_ID,
+            Arc::new(MapEmoteResolver::new(
+                [("Base".to_string(), channel.clone())].into(),
+            )),
+        );
+
+        for (channel_id, expected) in [(CHANNEL_ID, channel), ("another-channel", global)] {
+            let text = "ciao 世 Base";
+            let mut message = Message::with_segments(
+                text.to_string(),
+                vec![MessageSegment::Text {
+                    range: 0..text.len(),
+                }],
+            );
+            message.resolve_emotes(channel_id, &registry);
+            assert_eq!(message.text_only(), "ciao 世");
+            assert!(matches!(
+                message.segments.last().unwrap(),
+                MessageSegment::Emote { emote, .. } if Arc::ptr_eq(emote, &expected)
+            ));
+        }
+    }
 
     #[test]
     fn attaches_modifiers_to_preceding_emote() {
@@ -310,11 +344,11 @@ mod tests {
         let mod_one = modifier_emote("ModOne", EmoteModifierFlags::RAINBOW);
         let mod_two = modifier_emote("ModTwo", EmoteModifierFlags::GROW_X);
 
-        let mut resolver = StubResolver::default();
-        resolver.insert(base);
-        resolver.insert(mod_one);
-        resolver.insert(mod_two);
-        Arc::new(resolver) as Arc<dyn EmoteResolver>
+        let emotes = [base, mod_one, mod_two]
+            .into_iter()
+            .map(|emote| (emote.code.clone(), Arc::new(emote)))
+            .collect();
+        Arc::new(MapEmoteResolver::new(emotes))
     }
 
     #[test]
@@ -477,22 +511,5 @@ mod tests {
             Vec::new(),
         )
         .with_modifier(modifier)
-    }
-
-    #[derive(Default)]
-    struct StubResolver {
-        emotes: HashMap<String, Arc<EmoteRef>>,
-    }
-
-    impl StubResolver {
-        fn insert(&mut self, emote: EmoteRef) {
-            self.emotes.insert(emote.code.clone(), Arc::new(emote));
-        }
-    }
-
-    impl EmoteResolver for StubResolver {
-        fn resolve(&self, text_segment: &str) -> Vec<ResolvedSegment> {
-            resolve_with_lookup(text_segment, |token| self.emotes.get(token).cloned())
-        }
     }
 }

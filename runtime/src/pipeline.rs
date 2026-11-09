@@ -880,10 +880,7 @@ impl MessagePipeline {
 
     #[allow(dead_code)]
     pub async fn snapshots(&self) -> Vec<MessageSnapshot> {
-        let state = self.shared.state.read().await;
-        let mut list: Vec<_> = state.values().cloned().collect();
-        list.sort_by_key(|snapshot| std::cmp::Reverse(snapshot.header.id));
-        list
+        Self::snapshots_inner(&self.shared).await
     }
 
     pub fn snapshots_blocking(&self) -> Vec<MessageSnapshot> {
@@ -980,8 +977,8 @@ impl MessagePipeline {
             if let Err(err) = runtime_block_on(runtime, async move {
                 let mut state = shared.state.write().await;
                 state.clear();
-                for snapshot in &seed {
-                    state.insert(snapshot.header.id, snapshot.clone());
+                for snapshot in seed {
+                    state.insert(snapshot.header.id, snapshot);
                 }
             }) {
                 error!(%err, "failed to seed in-memory pipeline state");

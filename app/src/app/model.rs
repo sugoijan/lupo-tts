@@ -9,7 +9,7 @@ use lupo_configuration::{
     SettingsSnapshot as ConfigSettingsSnapshot, SnapshotApplyOptions, SnapshotReport,
 };
 use lupo_persistence::{
-    ChatterOverrideRecord, DatabaseHandle, MessageSnapshot, MessageState, app_project_dirs,
+    ChatterOverrideRecord, DatabaseHandle, MessageSnapshot, app_project_dirs,
     delete_chatter_override, list_chatter_overrides, open_database_at_path, save_chatter_override,
 };
 use lupo_secrets::{delete_secret, store_secret};
@@ -22,7 +22,7 @@ use tracing::warn;
 use unicode_segmentation::UnicodeSegmentation;
 
 use super::action::{AppAction, ShortcutAction, UiAction, UiEvent};
-use super::state::{self, AppState, MessageEntry, Tab};
+use super::state::{self, AppState, MessageEntry, Tab, display_seed};
 use lupo_runtime::bridge::{
     ActionResult, RuntimeBridge, RuntimeError, RuntimeErrorKind, RuntimeEvent, RuntimeIssue,
 };
@@ -45,28 +45,16 @@ pub struct AppModel {
     services: AppServices,
     bridge: RuntimeBridge,
     state: AppState,
-    twitch_listener_tasks: Option<TwitchListenerTasks>,
-    youtube_listener_tasks: Option<YouTubeListenerTasks>,
+    twitch_listener_tasks: Option<ListenerTasks>,
+    youtube_listener_tasks: Option<ListenerTasks>,
 }
 
-struct TwitchListenerTasks {
+struct ListenerTasks {
     connector: JoinHandle<()>,
     forwarder: JoinHandle<()>,
 }
 
-impl TwitchListenerTasks {
-    fn abort(self) {
-        self.connector.abort();
-        self.forwarder.abort();
-    }
-}
-
-struct YouTubeListenerTasks {
-    connector: JoinHandle<()>,
-    forwarder: JoinHandle<()>,
-}
-
-impl YouTubeListenerTasks {
+impl ListenerTasks {
     fn abort(self) {
         self.connector.abort();
         self.forwarder.abort();
@@ -1858,7 +1846,7 @@ fn spawn_twitch_listener(
     services: &AppServices,
     bridge: RuntimeBridge,
     config: TwitchConnectorConfig,
-) -> TwitchListenerTasks {
+) -> ListenerTasks {
     let (tx, rx) = unbounded::<TwitchEvent>();
     let context = TwitchConnectorContext {
         settings: services.settings(),
@@ -1875,7 +1863,7 @@ fn spawn_twitch_listener(
         }
     });
 
-    TwitchListenerTasks {
+    ListenerTasks {
         connector,
         forwarder,
     }
@@ -1885,7 +1873,7 @@ fn spawn_youtube_listener(
     services: &AppServices,
     bridge: RuntimeBridge,
     config: YouTubeConnectorConfig,
-) -> YouTubeListenerTasks {
+) -> ListenerTasks {
     let (tx, rx) = unbounded::<YouTubeEvent>();
     let context = YouTubeConnectorContext {
         settings: services.settings(),
@@ -1902,7 +1890,7 @@ fn spawn_youtube_listener(
         }
     });
 
-    YouTubeListenerTasks {
+    ListenerTasks {
         connector,
         forwarder,
     }
@@ -2091,12 +2079,17 @@ fn build_chatter_entries(
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty());
 
+            let profile_link = chatter_profile_link(
+                &base.provider_id,
+                base.user_id.as_deref(),
+                base.chatter_login.as_deref(),
+            );
             state::ChatterEntry {
-                chatter_id: base.chatter_id.clone(),
-                provider_id: base.provider_id.clone(),
-                user_id: base.user_id.clone(),
-                chatter_login: base.chatter_login.clone(),
-                sender: base.sender.clone(),
+                chatter_id: base.chatter_id,
+                provider_id: base.provider_id,
+                user_id: base.user_id,
+                chatter_login: base.chatter_login,
+                sender: base.sender,
                 display_name_override,
                 voice_override,
                 notes,
@@ -2105,11 +2098,7 @@ fn build_chatter_entries(
                 last_seen_at: base.last_seen_at,
                 is_moderator: base.is_moderator,
                 is_channel_owner: base.is_channel_owner,
-                profile_link: chatter_profile_link(
-                    &base.provider_id,
-                    base.user_id.as_deref(),
-                    base.chatter_login.as_deref(),
-                ),
+                profile_link,
             }
         })
         .collect::<Vec<_>>();
@@ -2149,19 +2138,6 @@ fn build_advanced_import_preview(
 
 fn format_json_value(value: &Value) -> String {
     serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string())
-}
-
-fn display_seed(snapshot: &MessageSnapshot) -> &str {
-    snapshot
-        .header
-        .metadata
-        .get("display_text")
-        .and_then(Value::as_str)
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or(match &snapshot.lifecycle.state {
-            MessageState::Transformed(state) => state.text.as_str(),
-            _ => snapshot.header.content.as_str(),
-        })
 }
 
 fn sanitize_for_display(text: &str) -> String {

@@ -237,39 +237,19 @@ fn describe_files(files: &[String]) -> String {
 }
 
 fn find_tokenizer_file(files: &[String]) -> Option<String> {
-    pick_file(files, "tokenizer.json").or_else(|| {
-        files
-            .iter()
-            .find(|entry| entry.ends_with("tokenizer.json"))
-            .cloned()
-    })
+    pick_file(files, "tokenizer.json")
 }
 
 fn find_config_file(files: &[String]) -> Option<String> {
-    pick_file(files, "config.json").or_else(|| {
-        files
-            .iter()
-            .find(|entry| entry.ends_with("config.json"))
-            .cloned()
-    })
+    pick_file(files, "config.json")
 }
 
 fn find_weight_file(files: &[String]) -> Option<String> {
-    pick_file(files, "model.safetensors").or_else(|| {
-        files
-            .iter()
-            .find(|entry| entry.ends_with("model.safetensors"))
-            .cloned()
-    })
+    pick_file(files, "model.safetensors")
 }
 
 fn find_index_file(files: &[String]) -> Option<String> {
-    pick_file(files, "model.safetensors.index.json").or_else(|| {
-        files
-            .iter()
-            .find(|entry| entry.ends_with("model.safetensors.index.json"))
-            .cloned()
-    })
+    pick_file(files, "model.safetensors.index.json")
 }
 
 fn pick_file(files: &[String], filename: &str) -> Option<String> {
@@ -282,6 +262,12 @@ fn pick_file(files: &[String], filename: &str) -> Option<String> {
             files
                 .iter()
                 .find(|entry| entry.ends_with(&candidate))
+                .cloned()
+        })
+        .or_else(|| {
+            files
+                .iter()
+                .find(|entry| entry.ends_with(filename))
                 .cloned()
         })
 }
@@ -359,5 +345,34 @@ fn select_device(preference: DevicePreference) -> Result<Device> {
                 Err(anyhow!("Metal backend is only available on macOS"))
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn weight_file_selection_preserves_exact_path_and_suffix_priority() {
+        let mut files = vec![
+            "custom-model.safetensors".to_string(),
+            "nested/model.safetensors".to_string(),
+            "model.safetensors".to_string(),
+        ];
+        assert_eq!(
+            find_weight_file(&files).as_deref(),
+            Some("model.safetensors")
+        );
+        files.pop();
+        assert_eq!(
+            find_weight_file(&files).as_deref(),
+            Some("nested/model.safetensors")
+        );
+        files.pop();
+        assert_eq!(
+            find_weight_file(&files).as_deref(),
+            Some("custom-model.safetensors")
+        );
+        assert_eq!(find_config_file(&files), None);
     }
 }

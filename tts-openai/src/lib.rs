@@ -116,7 +116,7 @@ impl OpenAi {
         let resp = self
             .client
             .post(OPENAI_API_V1_SPEECH.clone())
-            .bearer_auth(self.api_key.clone())
+            .bearer_auth(&self.api_key)
             .json(&body)
             .send()
             .await?;

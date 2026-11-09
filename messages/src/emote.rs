@@ -282,6 +282,24 @@ pub trait EmoteResolver: Send + Sync {
     fn resolve(&self, text_segment: &str) -> Vec<ResolvedSegment>;
 }
 
+/// Resolves emote codes from a fixed catalog snapshot.
+/// Channel selection and provider precedence belong to [`ResolverRegistry`].
+pub struct MapEmoteResolver {
+    emotes: HashMap<String, Arc<EmoteRef>>,
+}
+
+impl MapEmoteResolver {
+    pub fn new(emotes: HashMap<String, Arc<EmoteRef>>) -> Self {
+        Self { emotes }
+    }
+}
+
+impl EmoteResolver for MapEmoteResolver {
+    fn resolve(&self, text_segment: &str) -> Vec<ResolvedSegment> {
+        resolve_with_lookup(text_segment, |token| self.emotes.get(token).cloned())
+    }
+}
+
 #[derive(Default)]
 pub struct ResolverRegistry {
     global: Vec<Arc<dyn EmoteResolver>>,

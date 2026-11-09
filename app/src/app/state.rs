@@ -689,7 +689,7 @@ fn normalize_display_emote_url(raw_url: &str) -> Option<String> {
     Some(trimmed.to_string())
 }
 
-fn display_seed(snapshot: &MessageSnapshot) -> &str {
+pub(super) fn display_seed(snapshot: &MessageSnapshot) -> &str {
     snapshot
         .header
         .metadata

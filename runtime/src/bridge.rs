@@ -31,16 +31,11 @@ impl RuntimeBridge {
             return Vec::new();
         }
 
-        let mut events = Vec::new();
-        if let Ok(mut queue) = self.queue.lock() {
-            while events.len() < max_events {
-                let Some(event) = queue.pop_front() else {
-                    break;
-                };
-                events.push(event);
-            }
-        }
-        events
+        let Ok(mut queue) = self.queue.lock() else {
+            return Vec::new();
+        };
+        let count = max_events.min(queue.len());
+        queue.drain(..count).collect()
     }
 }
 
@@ -177,18 +172,33 @@ mod tests {
     #[test]
     fn bridge_drain_up_to_limits_batch_size() {
         let bridge = RuntimeBridge::default();
-        for _ in 0..3 {
-            bridge.push(RuntimeEvent::ActionResult(ActionResult::ClearQueue {
+        for message_id in 0..3 {
+            bridge.push(RuntimeEvent::ActionResult(ActionResult::SkipMessage {
+                message_id,
                 result: Ok(()),
             }));
         }
 
+        assert!(bridge.drain_up_to(0).is_empty());
+        assert!(bridge.has_pending());
+
         let first = bridge.drain_up_to(2);
         assert_eq!(first.len(), 2);
+        for (expected_id, event) in first.iter().enumerate() {
+            assert!(matches!(
+                event,
+                RuntimeEvent::ActionResult(ActionResult::SkipMessage { message_id, .. })
+                    if *message_id == expected_id as u64
+            ));
+        }
         assert!(bridge.has_pending());
 
         let second = bridge.drain_up_to(2);
         assert_eq!(second.len(), 1);
+        assert!(matches!(
+            second[0],
+            RuntimeEvent::ActionResult(ActionResult::SkipMessage { message_id: 2, .. })
+        ));
         assert!(!bridge.has_pending());
     }
 

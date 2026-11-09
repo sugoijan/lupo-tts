@@ -471,25 +471,26 @@ async fn run_speak(args: &SpeakArgs) -> Result<()> {
     Ok(())
 }
 
-async fn run_settings(args: SettingsArgs) -> Result<()> {
-    let (db, base_path) = match &args.data_dir {
+async fn open_settings_service(data_dir: Option<&Path>) -> Result<SettingsService> {
+    let (db, base_path) = match data_dir {
         Some(path) => {
             let db = open_database_at_path(path)
                 .await
                 .with_context(|| format!("failed to open database under {}", path.display()))?;
-            (db, Some(path.clone()))
+            (db, path.to_path_buf())
         }
         None => {
             let (dirs, db) = open_default_database().await?;
-            (db, Some(dirs.data_local_dir().to_path_buf()))
+            (db, dirs.data_local_dir().to_path_buf())
         }
     };
 
-    if let Some(path) = base_path {
-        info!("connected to settings database at {}", path.display());
-    }
+    info!("connected to settings database at {}", base_path.display());
+    Ok(SettingsService::new(db))
+}
 
-    let service = SettingsService::new(db.clone());
+async fn run_settings(args: SettingsArgs) -> Result<()> {
+    let service = open_settings_service(args.data_dir.as_deref()).await?;
 
     match args.command {
         SettingsCommand::List {
@@ -638,24 +639,7 @@ async fn run_twitch(args: TwitchArgs) -> Result<()> {
 }
 
 async fn run_twitch_auth(args: TwitchAuthArgs, data_dir: Option<PathBuf>) -> Result<()> {
-    let (db, base_path) = match data_dir {
-        Some(path) => {
-            let db = open_database_at_path(&path)
-                .await
-                .with_context(|| format!("failed to open database under {}", path.display()))?;
-            (db, Some(path))
-        }
-        None => {
-            let (dirs, db) = open_default_database().await?;
-            (db, Some(dirs.data_local_dir().to_path_buf()))
-        }
-    };
-
-    if let Some(path) = base_path {
-        info!("connected to settings database at {}", path.display());
-    }
-
-    let service = SettingsService::new(db.clone());
+    let service = open_settings_service(data_dir.as_deref()).await?;
 
     match args.command {
         TwitchAuthCommand::Login(login) => {
@@ -707,24 +691,7 @@ async fn run_twitch_auth(args: TwitchAuthArgs, data_dir: Option<PathBuf>) -> Res
 }
 
 async fn run_twitch_eventsub(args: TwitchEventArgs, data_dir: Option<PathBuf>) -> Result<()> {
-    let (db, base_path) = match data_dir {
-        Some(path) => {
-            let db = open_database_at_path(&path)
-                .await
-                .with_context(|| format!("failed to open database under {}", path.display()))?;
-            (db, Some(path))
-        }
-        None => {
-            let (dirs, db) = open_default_database().await?;
-            (db, Some(dirs.data_local_dir().to_path_buf()))
-        }
-    };
-
-    if let Some(path) = base_path {
-        info!("connected to settings database at {}", path.display());
-    }
-
-    let service = SettingsService::new(db.clone());
+    let service = open_settings_service(data_dir.as_deref()).await?;
 
     match args.command {
         TwitchEventCommand::Chat(chat_args) => {
@@ -736,24 +703,7 @@ async fn run_twitch_eventsub(args: TwitchEventArgs, data_dir: Option<PathBuf>) -
 }
 
 async fn run_twitch_emotes(args: TwitchEmotesArgs, data_dir: Option<PathBuf>) -> Result<()> {
-    let (db, base_path) = match data_dir {
-        Some(path) => {
-            let db = open_database_at_path(&path)
-                .await
-                .with_context(|| format!("failed to open database under {}", path.display()))?;
-            (db, Some(path))
-        }
-        None => {
-            let (dirs, db) = open_default_database().await?;
-            (db, Some(dirs.data_local_dir().to_path_buf()))
-        }
-    };
-
-    if let Some(path) = base_path {
-        info!("connected to settings database at {}", path.display());
-    }
-
-    let service = SettingsService::new(db.clone());
+    let service = open_settings_service(data_dir.as_deref()).await?;
 
     match args.command {
         TwitchEmotesCommand::SevenTv(opts) => {
@@ -811,24 +761,7 @@ fn print_twitch_status(state: StoredAuthState) {
 }
 
 async fn run_secret(args: SecretArgs) -> Result<()> {
-    let (db, base_path) = match &args.data_dir {
-        Some(path) => {
-            let db = open_database_at_path(path)
-                .await
-                .with_context(|| format!("failed to open database under {}", path.display()))?;
-            (db, Some(path.clone()))
-        }
-        None => {
-            let (dirs, db) = open_default_database().await?;
-            (db, Some(dirs.data_local_dir().to_path_buf()))
-        }
-    };
-
-    if let Some(path) = base_path {
-        info!("connected to settings database at {}", path.display());
-    }
-
-    let service = SettingsService::new(db.clone());
+    let service = open_settings_service(args.data_dir.as_deref()).await?;
 
     match args.command {
         SecretCommand::Set(args) => {
