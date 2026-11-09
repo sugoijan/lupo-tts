@@ -152,10 +152,20 @@ fn obs_bindgen() -> Result<()> {
         .join("obs-sys/src/bindings")
         .join(format!("{triple}.rs"));
 
+    // OBS normally generates this header through CMake. Parsing its public
+    // headers only needs the release flags, not an OBS build or install paths.
+    let config_dir = repo_root.join("target/obs-bindgen");
+    fs::create_dir_all(&config_dir)?;
+    fs::write(
+        config_dir.join("obsconfig.h"),
+        "#pragma once\n#define OBS_RELEASE_CANDIDATE 0\n#define OBS_BETA 0\n",
+    )?;
+
     let mut builder = bindgen::Builder::default()
         .header(wrapper.to_string_lossy())
         .clang_arg(format!("-I{}", libobs_dir.display()))
-        .clang_arg(format!("-I{}", repo_root.join("vendor/obs-studio/UI/obs-frontend-api").display()))
+        .clang_arg(format!("-I{}", config_dir.display()))
+        .clang_arg(format!("-I{}", repo_root.join("vendor/obs-studio/frontend/api").display()))
         .clang_arg(format!("--target={triple}"))
         .rust_target(bindgen::RustTarget::stable(85, 0).map_err(|e| anyhow::anyhow!("{e}"))?)
         .rust_edition(bindgen::RustEdition::Edition2024)

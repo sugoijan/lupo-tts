@@ -5,4 +5,4 @@
 	path = vendor/obs-studio
 	url = https://github.com/obsproject/obs-studio
 	shallow = true
-	branch = 31.0.3
+	branch = 33.0.1

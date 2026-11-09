@@ -35,7 +35,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: true # one level: vendor/obs-studio has its own submodules we do not need
 
@@ -57,14 +57,14 @@ jobs:
           ditto -c -k --keepParent target/release/bundle/macos/Lupo.app "dist/Lupo-macos-arm64-${VERSION}.zip"
 
       - name: Upload bundle artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Lupo-macos-arm64-${{ env.VERSION }}
           path: dist/*.zip
 
       - name: Create draft release
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: Release ${{ env.VERSION }}
           draft: true

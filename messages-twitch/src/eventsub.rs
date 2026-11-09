@@ -333,6 +333,7 @@ mod tests {
                         }),
                         mention: None,
                         cheermote: None,
+                        gif: None,
                     },
                     barbed::eventsub::EventSubMessageFragment {
                         fragment_type: barbed::eventsub::EventSubMessageFragmentType::Text,
@@ -340,9 +341,11 @@ mod tests {
                         emote: None,
                         mention: None,
                         cheermote: None,
+                        gif: None,
                     },
                 ],
             },
+            message_type: barbed::eventsub::EventSubChatMessageType::Text,
             cheer: Some(barbed::eventsub::EventSubCheer { bits: 100 }),
             badges: vec![BarbedChatBadge {
                 set_id: "moderator".to_string(),
@@ -350,6 +353,14 @@ mod tests {
                 info: None,
             }],
             color: Some("#ffffff".to_string()),
+            reply: None,
+            channel_points_custom_reward_id: None,
+            source_broadcaster_user_id: None,
+            source_broadcaster_user_login: None,
+            source_broadcaster_user_name: None,
+            source_message_id: None,
+            source_badges: Vec::new(),
+            is_source_only: None,
             source_timestamp: None,
         });
 

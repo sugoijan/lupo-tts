@@ -29,7 +29,7 @@ use lupo_runtime::ui_protocol::{
     ClientCommand, ProviderView, SecretKind, ServerEvent, message_view, playback_view,
     provider_view,
 };
-use rand::RngCore;
+use rand::Rng;
 use tokio::net::TcpListener;
 use tokio::runtime::Handle;
 use tokio::sync::mpsc;

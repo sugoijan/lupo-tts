@@ -38,6 +38,14 @@ Each variant fetches the corresponding provider's global set or the Twitch chann
 
 ## Developing
 
+Rust 1.97 or newer is required.
+
+The OBS plugin targets OBS Studio 33.0.1. After updating its vendored SDK, run
+`cargo xtask obs-bindgen` to regenerate the committed bindings for the host target.
+Regeneration needs libclang and SIMDe headers; set
+`BINDGEN_EXTRA_CLANG_ARGS="-I/path/to/simde"` if the directory containing `simde/`
+is outside Clang's default include paths. Normal builds use the committed bindings.
+
 Current desktop shells:
 
 - `cargo run -p lupo-app` runs the default Dioxus shell (`lupo`, webview renderer default).
